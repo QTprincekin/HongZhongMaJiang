@@ -1115,4 +1115,135 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
   opacity: 1;
   max-height: 200px;
 }
+
+/* ============================================================
+   移动端适配
+   ============================================================ */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .app-icon {
+    font-size: 20px;
+  }
+
+  .app-title {
+    font-size: 14px;
+  }
+
+  .header-right {
+    gap: 8px;
+  }
+
+  .deck-counter {
+    padding: 3px 8px;
+    gap: 4px;
+  }
+
+  .deck-label {
+    font-size: 9px;
+  }
+
+  .deck-value {
+    font-size: 13px;
+    min-width: 18px;
+  }
+
+  .round-badge,
+  .phase-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .settings-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .app-main {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto auto;
+    gap: 8px;
+    padding: 8px;
+    overflow-y: auto;
+  }
+
+  .left-panel,
+  .center-panel,
+  .right-panel {
+    overflow: visible;
+  }
+
+  .status-card {
+    padding: 10px 12px;
+  }
+
+  .status-icon {
+    font-size: 20px;
+  }
+
+  .status-text {
+    font-size: 13px;
+  }
+
+  .hand-section,
+  .melds-section,
+  .waiting-section,
+  .switch-section,
+  .action-section,
+  .river-section,
+  .simulator-section,
+  .history-section {
+    padding: 10px 12px;
+  }
+
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 1px;
+  }
+
+  .start-btn,
+  .action-btn {
+    font-size: 14px;
+    height: 44px;
+  }
+
+  .sim-result {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .stat-value {
+    font-size: 18px;
+  }
+
+  .settings-body {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .setting-item.full {
+    min-width: auto;
+  }
+
+  .setting-item input[type="text"],
+  .setting-item input[type="password"] {
+    min-width: auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-title {
+    display: none;
+  }
+
+  .round-badge {
+    display: none;
+  }
+}
 </style>

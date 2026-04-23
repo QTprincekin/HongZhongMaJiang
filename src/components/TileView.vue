@@ -199,4 +199,54 @@ const SUIT_NAMES: Record<string, string> = {
   line-height: 14px;
   z-index: 2;
 }
+
+/* 移动端牌尺寸缩小 */
+@media (max-width: 768px) {
+  .tile:not(.small):not(.mini):not(.meld-tile) {
+    width: 38px;
+    height: 48px;
+    font-size: 16px;
+  }
+
+  .tile.small {
+    width: 28px;
+    height: 34px;
+    font-size: 12px;
+  }
+
+  .tile.mini,
+  .tile.meld-tile {
+    width: 24px;
+    height: 30px;
+    font-size: 11px;
+  }
+
+  .tile-count {
+    font-size: 8px;
+    padding: 0 2px;
+    min-width: 12px;
+    line-height: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .tile:not(.small):not(.mini):not(.meld-tile) {
+    width: 32px;
+    height: 42px;
+    font-size: 14px;
+  }
+
+  .tile.small {
+    width: 24px;
+    height: 30px;
+    font-size: 10px;
+  }
+
+  .tile.mini,
+  .tile.meld-tile {
+    width: 20px;
+    height: 26px;
+    font-size: 9px;
+  }
+}
 </style>

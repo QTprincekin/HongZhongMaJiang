@@ -264,3 +264,36 @@ body {
 .mb-2 { margin-bottom: 16px; }
 .gap-1 { gap: 8px; }
 .gap-2 { gap: 16px; }
+
+/* ============================================================
+   移动端基础适配
+   ============================================================ */
+@media (max-width: 768px) {
+  body {
+    font-size: 13px;
+  }
+
+  .panel {
+    padding: 10px 12px;
+  }
+
+  .btn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 12px;
+  }
+
+  .panel {
+    padding: 8px 10px;
+  }
+
+  .btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+}
