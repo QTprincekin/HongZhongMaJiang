@@ -1,0 +1,266 @@
+/* ============================================================
+   红中麻将概率训练系统 - 全局样式
+   ============================================================ */
+
+:root {
+  /* 主色调 - 麻将牌风格 */
+  --color-bg: #0f0f1a;
+  --color-surface: #1a1a2e;
+  --color-card: #232340;
+  --color-card-hover: #2a2a4a;
+  
+  /* 强调色 */
+  --color-primary: #ff6b6b;      /* 珊瑚红 - 碰/胡 */
+  --color-accent: #feca57;       /* 金黄 - 重点数据 */
+  --color-success: #48dbfb;      /* 青色 - 成功/自摸 */
+  --color-danger: #ff4757;       /* 红色 - 危险/风险 */
+  --color-gold: #ffd700;         /* 金色 - 高价值 */
+  
+  /* 麻将牌面颜色 */
+  --tile-dot: linear-gradient(145deg, #0984e3, #0652dd);
+  --tile-bamboo: linear-gradient(145deg, #00b894, #00896b);
+  --tile-character: linear-gradient(145deg, #a55eea, #8854d0);
+  --tile-redzhong: linear-gradient(145deg, #ff4757, #c0392b);
+  
+  /* 文字 */
+  --color-text: #f5f6fa;
+  --color-text-muted: #747d8c;
+  --color-text-dim: #57606f;
+  
+  /* 边框 */
+  --color-border: #2f3542;
+  --color-border-light: #3f4451;
+  
+  /* 布局 */
+  --radius: 12px;
+  --radius-sm: 6px;
+  --shadow: 0 4px 20px rgba(0,0,0,0.4);
+  --shadow-glow: 0 0 20px rgba(255,107,107,0.3);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Microsoft YaHei', 'PingFang SC', 'Segoe UI', sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+#app {
+  min-height: 100vh;
+}
+
+/* ============================================================
+   滚动条
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-primary);
+}
+
+/* ============================================================
+   麻将牌 - 全局
+   ============================================================ */
+.tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  user-select: none;
+  position: relative;
+  overflow: hidden;
+}
+
+.tile::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(to bottom, rgba(255,255,255,0.15), transparent);
+  border-radius: 6px 6px 0 0;
+  pointer-events: none;
+}
+
+.tile.dot { background: var(--tile-dot); }
+.tile.bamboo { background: var(--tile-bamboo); }
+.tile.char, .tile.character { background: var(--tile-character); }
+.tile.red-zhong, .tile.red_zhong { background: var(--tile-redzhong); }
+
+.tile:hover:not(.dimmed) {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+}
+
+.tile.selected {
+  transform: translateY(-5px) scale(1.05);
+  box-shadow: 0 0 0 3px var(--color-primary), 0 10px 25px rgba(255,107,107,0.4);
+}
+
+.tile.dimmed {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(30%);
+}
+
+/* ============================================================
+   面板
+   ============================================================ */
+.panel {
+  background: var(--color-card);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.panel:hover {
+  border-color: var(--color-border-light);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ============================================================
+   按钮
+   ============================================================ */
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 4px 15px rgba(255,107,107,0.3);
+}
+
+.btn-primary:hover {
+  background: #ff5252;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255,107,107,0.4);
+}
+
+.btn-secondary {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.btn-success {
+  background: var(--color-success);
+  color: #0f0f1a;
+  font-weight: 600;
+}
+
+.btn-warning {
+  background: var(--color-accent);
+  color: #1a1a2e;
+  font-weight: 600;
+}
+
+/* ============================================================
+   概率等级
+   ============================================================ */
+.prob-high { 
+  color: var(--color-success); 
+  text-shadow: 0 0 10px rgba(72,219,251,0.5);
+}
+.prob-mid { 
+  color: var(--color-accent); 
+  text-shadow: 0 0 10px rgba(254,202,87,0.5);
+}
+.prob-low { 
+  color: var(--color-danger); 
+  text-shadow: 0 0 10px rgba(255,71,87,0.3);
+}
+
+/* ============================================================
+   动画
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes glow {
+  0%, 100% { box-shadow: 0 0 5px var(--color-primary); }
+  50% { box-shadow: 0 0 20px var(--color-primary), 0 0 30px var(--color-primary); }
+}
+
+.animate-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+.pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* ============================================================
+   工具类
+   ============================================================ */
+.text-center { text-align: center; }
+.text-muted { color: var(--color-text-muted); }
+.text-primary { color: var(--color-primary); }
+.text-success { color: var(--color-success); }
+.text-danger { color: var(--color-danger); }
+.text-accent { color: var(--color-accent); }
+
+.mt-1 { margin-top: 8px; }
+.mt-2 { margin-top: 16px; }
+.mb-1 { margin-bottom: 8px; }
+.mb-2 { margin-bottom: 16px; }
+.gap-1 { gap: 8px; }
+.gap-2 { gap: 16px; }
