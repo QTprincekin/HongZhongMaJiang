@@ -7,6 +7,7 @@ import { ref, computed } from 'vue'
 import {
   Tile, TileSuit, DeckState, Meld, GameAction,
   ProbabilityState, PongDecision, GangDecision,
+  AIDifficulty, AI_DIFFICULTY_CONFIG,
 } from '@/types'
 import {
   createDeck, dealHand, drawTile, gangDraw, addVisibleTile,
@@ -62,6 +63,7 @@ export const useGameStore = defineStore('game', () => {
   const gamePhase = ref<GamePhase>('init')
   const message = ref<string>('')
   const hasDrawnThisTurn = ref(false)
+  const aiDifficulty = ref<AIDifficulty>(AIDifficulty.NOVICE)
 
   // ===================== 计算属性 =====================
   const waiting = computed(() => {
@@ -383,9 +385,25 @@ export const useGameStore = defineStore('game', () => {
     message.value = `${opp.name} 摸牌`
 
     setTimeout(() => {
+      // 检查对手是否自摸胡牌（14张且听牌）
+      if (opp.hand.length === 14) {
+        const oppWaiting = analyzeWaiting(opp.hand, opp.melds)
+        if (oppWaiting.isReady) {
+          const config = AI_DIFFICULTY_CONFIG[aiDifficulty.value]
+          const roll = Math.random()
+          if (roll < config.winChance) {
+            // AI 胡牌了！
+            gamePhase.value = 'ended'
+            message.value = `${opp.name} 自摸胡牌！你输了 💔`
+            history.value.push({ type: 'self_draw', tile: drawn, round: round.value })
+            return
+          }
+        }
+      }
+
       // 获取所有可见牌（已打出的牌）
       const visibleTiles = deck.value.visibleTiles || []
-      const discardTile = selectOpponentDiscard(opp.hand, visibleTiles)
+      const discardTile = selectOpponentDiscard(opp.hand, visibleTiles, opp.melds)
       const idx = opp.hand.findIndex(t => t.id === discardTile.id)
       if (idx >= 0) {
         opp.hand.splice(idx, 1)
@@ -432,77 +450,92 @@ export const useGameStore = defineStore('game', () => {
     }
   }
 
-  function selectOpponentDiscard(hand: Tile[], visibleTiles: Tile[] = []): Tile {
+  function selectOpponentDiscard(hand: Tile[], _visibleTiles: Tile[] = [], melds: Meld[] = []): Tile {
     const counts = new Map<string, number>()
     for (const t of hand) {
       const key = `${t.suit}_${t.number}`
       counts.set(key, (counts.get(key) || 0) + 1)
     }
 
-    // 1. 永远不打红中（赖子）
-    const redZhongs = hand.filter(t => t.suit === TileSuit.RED_ZHONG)
-    if (redZhongs.length > 0) {
-      // 如果有14张（刚摸牌），检查是否能胡
-      if (hand.length === 14) {
-        const canWinNow = analyzeWaiting(hand).isReady
-        if (canWinNow) {
-          // 胡了！返回任意一张（实际上不会走到这里）
-          return hand[0]
-        }
+    const config = AI_DIFFICULTY_CONFIG[aiDifficulty.value]
+    const strategy = config.discardStrategy
+
+    // 辅助函数：不打红中的过滤
+    const noRed = (t: Tile) => t.suit !== TileSuit.RED_ZHONG
+
+    // ========== 专家级：最优策略 ==========
+    if (strategy === 'optimal') {
+      const rec = analyzeDiscardOptions(hand, melds, deck.value)
+      if (rec && rec.bestDiscard) {
+        const target = hand.find(t => t.suit === rec.bestDiscard.discard.suit && t.number === rec.bestDiscard.discard.number)
+        if (target) return target
       }
+      // fallback 到 good 策略
     }
 
-    // 2. 优先打孤张（只有1张的牌），但不打红中
-    const singles = hand.filter(t => {
-      if (t.suit === TileSuit.RED_ZHONG) return false // 不打红中
-      const key = `${t.suit}_${t.number}`
-      return counts.get(key) === 1
-    })
-
-    if (singles.length > 0) {
-      // 优先打熟张（已经有人打过的）
-      const visibleKeys = new Set(visibleTiles.map(t => `${t.suit}_${t.number}`))
-      const safeSingles = singles.filter(t => visibleKeys.has(`${t.suit}_${t.number}`))
-      if (safeSingles.length > 0) {
-        return safeSingles[Math.floor(Math.random() * safeSingles.length)]
+    // ========== 高手级：好策略 ==========
+    if (strategy === 'good' || strategy === 'optimal') {
+      // 优先打孤张
+      const singles = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 1)
+      if (singles.length > 0) {
+        // 优先打边张（1,9），保留中间张（更容易成顺）
+        const edgeSingles = singles.filter(t => t.number === 1 || t.number === 9)
+        if (edgeSingles.length > 0) return edgeSingles[Math.floor(Math.random() * edgeSingles.length)]
+        return singles[Math.floor(Math.random() * singles.length)]
       }
-      // 没有熟张，打最外面的孤张
-      return singles[Math.floor(Math.random() * singles.length)]
+      // 其次拆对子，但优先拆边张对子
+      const pairs = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 2)
+      const edgePairs = pairs.filter(t => t.number === 1 || t.number === 9)
+      if (edgePairs.length > 0) return edgePairs[Math.floor(Math.random() * edgePairs.length)]
+      if (pairs.length > 0) return pairs[Math.floor(Math.random() * pairs.length)]
+      // 最后打刻子
+      const triples = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 3)
+      if (triples.length > 0) return triples[Math.floor(Math.random() * triples.length)]
+      const nonRed = hand.filter(noRed)
+      if (nonRed.length > 0) return nonRed[Math.floor(Math.random() * nonRed.length)]
+      return hand[0]
     }
 
-    // 3. 没有孤张，打对子中的一张（防止给玩家碰）
-    const pairs = hand.filter(t => {
-      if (t.suit === TileSuit.RED_ZHONG) return false
-      const key = `${t.suit}_${t.number}`
-      return counts.get(key) === 2
-    })
+    // ========== 入门级：随机策略 ==========
+    if (strategy === 'random') {
+      const singles = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 1)
+      if (singles.length > 0 && Math.random() > 0.3) {
+        return singles[Math.floor(Math.random() * singles.length)]
+      }
+      const pairs = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 2)
+      if (pairs.length > 0 && Math.random() > 0.3) {
+        return pairs[Math.floor(Math.random() * pairs.length)]
+      }
+      const triples = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 3)
+      if (triples.length > 0) return triples[Math.floor(Math.random() * triples.length)]
+      const nonRed = hand.filter(noRed)
+      if (nonRed.length > 0) return nonRed[Math.floor(Math.random() * nonRed.length)]
+      return hand[0]
+    }
+
+    // ========== 新手级：烂策略（故意打烂牌，让自己不容易胡）==========
+    // 优先拆对子（给玩家碰的机会），其次打连张，最后才打孤张
+    const pairs = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 2)
     if (pairs.length > 0) {
-      // 优先打熟张
-      const visibleKeys = new Set(visibleTiles.map(t => `${t.suit}_${t.number}`))
-      const safePairs = pairs.filter(t => visibleKeys.has(`${t.suit}_${t.number}`))
-      if (safePairs.length > 0) {
-        return safePairs[Math.floor(Math.random() * safePairs.length)]
-      }
       return pairs[Math.floor(Math.random() * pairs.length)]
     }
-
-    // 4. 打三张中的一张（刻子）
-    const triples = hand.filter(t => {
-      if (t.suit === TileSuit.RED_ZHONG) return false
-      const key = `${t.suit}_${t.number}`
-      return counts.get(key) === 3
+    // 其次打有"搭子潜力"的牌（连张）
+    const connected = hand.filter(t => {
+      if (!noRed(t)) return false
+      // 如果手中有相邻数字的牌（如手中有3筒，且还有2筒或4筒）
+      return hand.some(o => o.suit === t.suit && o.number !== null && t.number !== null && Math.abs(o.number - t.number) === 1)
     })
-    if (triples.length > 0) {
-      return triples[Math.floor(Math.random() * triples.length)]
+    if (connected.length > 0) {
+      return connected[Math.floor(Math.random() * connected.length)]
     }
-
-    // 5. 最后的选择：打红中以外的任意牌
-    const nonRedZhongs = hand.filter(t => t.suit !== TileSuit.RED_ZHONG)
-    if (nonRedZhongs.length > 0) {
-      return nonRedZhongs[Math.floor(Math.random() * nonRedZhongs.length)]
-    }
-
-    // 极端情况：只有红中（理论上不应该发生）
+    // 最后打孤张
+    const singles = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 1)
+    if (singles.length > 0) return singles[Math.floor(Math.random() * singles.length)]
+    // 刻子
+    const triples = hand.filter(t => noRed(t) && counts.get(`${t.suit}_${t.number}`) === 3)
+    if (triples.length > 0) return triples[Math.floor(Math.random() * triples.length)]
+    const nonRed = hand.filter(noRed)
+    if (nonRed.length > 0) return nonRed[Math.floor(Math.random() * nonRed.length)]
     return hand[0]
   }
 
@@ -534,14 +567,19 @@ export const useGameStore = defineStore('game', () => {
     return (a.number || 0) - (b.number || 0)
   }
 
+  function setAIDifficulty(difficulty: AIDifficulty) {
+    aiDifficulty.value = difficulty
+  }
+
   return {
     deck, playerHand, playerMelds, playerRiver,
     opponents, round, currentOpponent, history,
     selectedTile, pendingPongTile, pendingGangTile, pendingFrom,
-    gamePhase, message, hasDrawnThisTurn,
+    gamePhase, message, hasDrawnThisTurn, aiDifficulty,
     waiting, probability, pongResult, gangResult,
     canDraw, canDiscard, canPong, canGang,
     shantenResult, effectiveDrawResult, discardRecommendation,
     startGame, draw, discard, pong, rejectPong, gang, rejectGang, win, rejectWin, reset,
+    setAIDifficulty,
   }
 })

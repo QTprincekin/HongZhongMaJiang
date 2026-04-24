@@ -17,6 +17,11 @@
         <div class="phase-badge" :class="phaseClass">
           {{ phaseLabel }}
         </div>
+        <select v-model="game.aiDifficulty" class="difficulty-select" @change="game.setAIDifficulty(game.aiDifficulty)">
+          <option v-for="(cfg, key) in AI_DIFFICULTY_CONFIG" :key="key" :value="key">
+            {{ cfg.label }}
+          </option>
+        </select>
         <button class="settings-btn" @click="showSettings = !showSettings" :class="{ active: showSettings }">
           ⚙️
         </button>
@@ -338,6 +343,7 @@
 import { ref, computed, watch } from 'vue'
 import { NButton } from 'naive-ui'
 import { useGameStore } from '@/stores/gameStore'
+import { AI_DIFFICULTY_CONFIG } from '@/types'
 import { formatTile as _formatTile } from '@/algorithms/deck'
 import { switchDecision } from '@/algorithms/switch-decision'
 import TileView from '@/components/TileView.vue'
@@ -556,6 +562,26 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .phase-decision { background: var(--color-primary); color: #fff; animation: pulse 1.5s infinite; }
 .phase-win { background: var(--color-gold); color: #1a1a2e; animation: glow 1s infinite; }
 .phase-ended { background: #57606f; color: #fff; }
+
+.difficulty-select {
+  background: rgba(255,255,255,0.1);
+  color: #eaeaea;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.2s;
+}
+.difficulty-select:hover {
+  background: rgba(255,255,255,0.18);
+  border-color: rgba(255,255,255,0.3);
+}
+.difficulty-select option {
+  background: #1a1f3a;
+  color: #eaeaea;
+}
 
 .settings-btn {
   width: 36px;

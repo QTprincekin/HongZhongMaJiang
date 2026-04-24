@@ -240,6 +240,28 @@ export interface DiscardRecommendation {
   bestDiscard: DiscardAnalysis        // 推荐打出的牌
 }
 
+// AI 难度等级
+export enum AIDifficulty {
+  NOVICE = 'novice',       // 新手 - 永远不胡，故意打烂牌
+  BEGINNER = 'beginner',   // 入门 - 低概率胡牌，一般策略
+  EXPERT = 'expert',       // 高手 - 大概率胡牌，较好策略
+  MASTER = 'master',       // 专家 - 必胡，最优策略
+}
+
+// AI 难度配置
+export interface AIDifficultyConfig {
+  label: string
+  winChance: number        // 听牌后胡牌概率 (0-1)
+  discardStrategy: 'bad' | 'random' | 'good' | 'optimal'
+}
+
+export const AI_DIFFICULTY_CONFIG: Record<AIDifficulty, AIDifficultyConfig> = {
+  [AIDifficulty.NOVICE]: { label: '新手', winChance: 0, discardStrategy: 'bad' },
+  [AIDifficulty.BEGINNER]: { label: '入门', winChance: 0.2, discardStrategy: 'random' },
+  [AIDifficulty.EXPERT]: { label: '高手', winChance: 0.8, discardStrategy: 'good' },
+  [AIDifficulty.MASTER]: { label: '专家', winChance: 1, discardStrategy: 'optimal' },
+}
+
 // 游戏状态
 export interface GameState {
   deck: DeckState
@@ -247,6 +269,7 @@ export interface GameState {
   opponentHands: HandState[]
   round: number
   history: GameAction[]
+  aiDifficulty: AIDifficulty
 }
 
 export type GameActionType = 'draw' | 'discard' | 'pong' | 'gang' | 'self_draw'
