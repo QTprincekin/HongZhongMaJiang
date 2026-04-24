@@ -14,7 +14,7 @@
     ]"
     @click="clickable && $emit('click', tile)"
   >
-    <span class="tile-text">{{ displayText }}</span>
+    <img class="tile-img" :src="tileImageSrc" :alt="displayText" draggable="false" />
     <div v-if="count !== undefined && count > 0" class="tile-count">{{ count }}</div>
   </div>
 </template>
@@ -22,6 +22,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { TileSuit } from '@/types'
+
+// 预加载所有麻将牌 SVG 图片
+const imageModules = import.meta.glob('../assets/MaJong-UI/*.svg', {
+  eager: true,
+  query: '?url',
+  import: 'default'
+})
+
+const imageMap = new Map<string, string>()
+for (const [path, url] of Object.entries(imageModules)) {
+  const filename = path.split('/').pop()!.replace('.svg', '')
+  imageMap.set(filename, url as string)
+}
 
 const props = withDefaults(defineProps<{
   tile: { suit: string; number: number | null; id: string }
@@ -53,7 +66,7 @@ const tileClass = computed(() => {
 const clickable = computed(() => !props.dimmed)
 
 const displayText = computed(() => {
-  if (props.tile.suit === TileSuit.RED_ZHONG) return '中'
+  if (props.tile.suit === TileSuit.RED_ZHONG) return '红中'
   return `${props.tile.number}${SUIT_NAMES[props.tile.suit] || ''}`
 })
 
@@ -62,6 +75,16 @@ const SUIT_NAMES: Record<string, string> = {
   [TileSuit.BAMBOO]: '条',
   [TileSuit.CHARACTER]: '万',
 }
+
+// 根据花色和数字映射到对应图片
+const tileImageSrc = computed(() => {
+  const { suit, number } = props.tile
+  if (suit === TileSuit.RED_ZHONG) {
+    return imageMap.get('红中') || ''
+  }
+  const prefix = suit === TileSuit.DOT ? 'bing' : suit === TileSuit.BAMBOO ? 'tiao' : 'wan'
+  return imageMap.get(`${prefix}-${number}`) || ''
+})
 </script>
 
 <style scoped>
@@ -176,12 +199,13 @@ const SUIT_NAMES: Record<string, string> = {
     inset 0 1px 0 rgba(255,255,255,0.1);
 }
 
-/* 牌面文字 */
-.tile-text {
-  position: relative;
+/* 牌面图片 */
+.tile-img {
+  width: 88%;
+  height: 88%;
+  object-fit: contain;
+  pointer-events: none;
   z-index: 1;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-  letter-spacing: -1px;
 }
 
 /* 剩余数量标记 */
