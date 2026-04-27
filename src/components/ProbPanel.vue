@@ -151,8 +151,8 @@ function expectClass(d: number): string {
 }
 
 .panel-title {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 1.5px;
@@ -167,19 +167,20 @@ function expectClass(d: number): string {
 }
 
 .not-ready-icon {
-  font-size: 36px;
-  margin-bottom: 8px;
+  font-size: 48px;
+  margin-bottom: 12px;
   opacity: 0.6;
 }
 
 .not-ready-text {
-  font-size: 16px;
+  font-size: 20px;
   color: var(--color-text-muted);
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  font-weight: 600;
 }
 
 .not-ready-hint {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-text-dim);
 }
 
@@ -194,8 +195,8 @@ function expectClass(d: number): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 11px;
+  margin-bottom: 12px;
+  font-size: 14px;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
@@ -212,8 +213,8 @@ function expectClass(d: number): string {
 
 .zero-alert {
   color: var(--color-danger);
-  font-size: 10px;
-  margin-left: 4px;
+  font-size: 12px;
+  margin-left: 6px;
 }
 
 .target-tiles {
@@ -237,13 +238,13 @@ function expectClass(d: number): string {
 }
 
 .tile-remaining {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: bold;
   color: var(--color-accent);
   background: rgba(0,0,0,0.4);
   border-radius: 4px;
-  padding: 0 4px;
-  min-width: 16px;
+  padding: 2px 6px;
+  min-width: 20px;
   text-align: center;
 }
 
@@ -270,7 +271,7 @@ function expectClass(d: number): string {
 .prob-card {
   background: var(--color-surface);
   border-radius: 8px;
-  padding: 10px 6px;
+  padding: 14px 6px;
   text-align: center;
   border: 1px solid var(--color-border);
   transition: all 0.2s;
@@ -287,20 +288,22 @@ function expectClass(d: number): string {
 }
 
 .prob-label {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  font-weight: 600;
 }
 
 .prob-value {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 22px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
 }
 
-.prob-value.high { color: var(--color-success); text-shadow: 0 0 10px rgba(72,219,251,0.4); }
-.prob-value.mid { color: var(--color-accent); text-shadow: 0 0 10px rgba(254,202,87,0.4); }
+.prob-value.high { color: var(--color-success); text-shadow: 0 0 10px rgba(61,217,192,0.4); }
+.prob-value.mid { color: var(--color-accent); text-shadow: 0 0 10px rgba(247,201,72,0.4); }
 .prob-value.low { color: var(--color-danger); }
 
 /* ============================================================
@@ -318,24 +321,27 @@ function expectClass(d: number): string {
 }
 
 .expect-label {
-  font-size: 12px;
+  font-size: 15px;
   color: var(--color-text-muted);
+  font-weight: 600;
 }
 
 .expect-value {
   display: flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 4px;
 }
 
 .expect-number {
-  font-size: 24px;
-  font-weight: bold;
+  font-size: 32px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .expect-unit {
-  font-size: 12px;
+  font-size: 15px;
   color: var(--color-text-muted);
+  font-weight: 600;
 }
 
 .expect-value.good .expect-number { color: var(--color-success); }
@@ -350,17 +356,18 @@ function expectClass(d: number): string {
 }
 
 .prob-bar-label {
-  font-size: 10px;
-  color: var(--color-text-dim);
+  font-size: 13px;
+  color: var(--color-text-muted);
   margin-bottom: 6px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: 600;
 }
 
 .prob-bar {
-  height: 8px;
+  height: 12px;
   background: var(--color-surface);
-  border-radius: 4px;
+  border-radius: 6px;
   overflow: hidden;
 }
 

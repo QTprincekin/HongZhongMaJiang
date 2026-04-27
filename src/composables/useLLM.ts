@@ -19,6 +19,7 @@ const DEFAULT_CONFIG: LLMConfig = {
   model: 'gpt-4o-mini',
   maxTokens: 1024,
   temperature: 0.7,
+  showReasoning: true,
   enabledTriggers: ['pong_decision', 'gang_decision', 'switch_decision', 'low_probability', 'manual'],
 }
 
@@ -150,9 +151,9 @@ export function useLLM() {
       const messages = [
         {
           role: 'system' as const,
-          content: `你是红中麻将的概率分析专家，帮助用户做出最优决策。
+          content: `你是红中麻将的概率分析专家，红中麻将总共条、筒、万、各九种牌型，每种4张，红中4张，共112张，其中红中是万能牌，可以代替任何牌，只能碰牌和杠牌，不能吃牌，胡牌只能自摸胡牌。帮助用户做出最优决策。
 你的分析应该：
-- 简洁专业，直接给出建议
+- 简洁专业，直接给出建议，中文回答，300字以内
 - 结合概率数据和麻将经验
 - 指出关键牌的影响
 - 诚实评估风险
@@ -161,6 +162,13 @@ export function useLLM() {
         },
         { role: 'user' as const, content: prompt }
       ]
+      const requestPayload = {
+        model: config.value.model,
+        messages,
+        max_tokens: 8192,
+        ...(config.value.model.includes('kimi-k') ? { temperature: 1 } : { temperature: config.value.temperature }),
+      };
+      console.log('🚀 [useLLM] 发送给 AI 的完整请求体:', requestPayload);
 
       const response = await fetch(config.value.apiUrl, {
         method: 'POST',
@@ -168,34 +176,34 @@ export function useLLM() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${config.value.apiKey}`,
         },
-        body: JSON.stringify({
-          model: config.value.model,
-          messages,
-          max_tokens: config.value.maxTokens,
-          temperature: config.value.temperature,
-        }),
+        body: JSON.stringify(requestPayload),
       })
 
       const data = await response.json()
-      const latency = Date.now() - start
-
-      if (!response.ok) {
-        return {
-          success: false,
-          error: data.error?.message || `HTTP ${response.status}`,
-          latency,
+      console.log('🎯 [useLLM] AI 完整返回结果:', data);
+      if (response.ok) {
+        const msg = data.choices?.[0]?.message || {}
+        const reasoning = (config.value.showReasoning && msg.reasoning_content) 
+          ? `**【AI 思考过程】**\n_${msg.reasoning_content}_\n\n` 
+          : ''
+        const text = msg.content || ''
+        const finalContent = (reasoning + text).trim()
+        result.value = {
+          success: true,
+          content: finalContent || '未返回任何分析内容',
+          latency: Date.now() - start,
+          model: data.model || config.value.model
         }
+        return result.value
+      } else {
+        const errorResult = {
+          success: false as const,
+          error: data.error?.message || `HTTP ${response.status}`,
+          latency: Date.now() - start
+        }
+        result.value = errorResult
+        return errorResult
       }
-
-      const content = data.choices?.[0]?.message?.content || ''
-      result.value = {
-        success: true,
-        content,
-        latency,
-        model: data.model || config.value.model,
-      }
-      return result.value
-
     } catch (err: any) {
       const latency = Date.now() - start
       return { success: false, error: err.message || '网络错误', latency }

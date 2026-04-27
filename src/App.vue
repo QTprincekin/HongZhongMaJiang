@@ -40,6 +40,10 @@
             <span class="setting-label">启用 AI</span>
             <input type="checkbox" v-model="llmConfig.enabled" @change="saveLLMConfig" />
           </label>
+          <label class="setting-item" title="是否展示深度推理模型的思考推演过程">
+            <span class="setting-label">显示推演</span>
+            <input type="checkbox" v-model="llmConfig.showReasoning" @change="saveLLMConfig" />
+          </label>
           <label class="setting-item full">
             <span class="setting-label">API 地址</span>
             <input type="text" v-model="llmConfig.apiUrl" placeholder="https://api.openai.com/v1/chat/completions" @blur="saveLLMConfig" />
@@ -177,15 +181,26 @@
               >
                 ✅ 碰
               </n-button>
+              <!-- 明杠：对手打出第 4 张（pendingFrom 有値） -->
               <n-button
-                v-if="game.gamePhase === 'waiting_gang'"
+                v-if="game.gamePhase === 'waiting_gang' && game.pendingFrom !== null"
                 type="warning"
                 size="large"
                 @click="game.gang('exposed')"
               >
-                ✅ 杠
+                🀄 明杠
               </n-button>
-              <n-button size="large" @click="game.rejectPong()">
+              <!-- 暗杠：自己摸到第 4 张（pendingFrom 为 null） -->
+              <n-button
+                v-if="game.gamePhase === 'waiting_gang' && game.pendingFrom === null"
+                type="warning"
+                size="large"
+                @click="game.gang('concealed')"
+              >
+                🔒 暗杠
+              </n-button>
+              <!-- 跳过：根据阶段调用正确的 reject -->
+              <n-button size="large" @click="game.gamePhase === 'waiting_gang' ? game.rejectGang() : game.rejectPong()">
                 ❌ 跳过
               </n-button>
             </div>
@@ -281,7 +296,9 @@
           :visible-tiles="game.deck.visibleTiles"
           :deck-remaining="game.deck.remainingCount"
           :probability="game.probability"
+          :llm-enabled="llm.isEnabled.value"
           @confirm="onPongConfirm"
+          @request-a-i="openAIModal('pong_decision')"
         />
 
         <!-- 杠决策 -->
@@ -295,7 +312,10 @@
           :visible-tiles="game.deck.visibleTiles"
           :deck-remaining="game.deck.remainingCount"
           :probability="game.probability"
+          :gang-type="currentGangType"
+          :llm-enabled="llm.isEnabled.value"
           @confirm="onGangConfirm"
+          @request-a-i="openAIModal('gang_decision')"
         />
 
         <!-- 模拟器 -->
@@ -317,10 +337,28 @@
             </div>
           </div>
         </div>
+
+        <!-- 贝叶斯对手分析面板 -->
+        <BayesianPanel
+          v-if="game.gamePhase !== 'init'"
+          :opponents="game.opponents"
+          :history="game.history"
+          :target-tiles="game.waiting.waitingTiles"
+          :deck-remaining="game.deck.remainingCount"
+        />
       </section>
 
       <!-- ========== 右侧面板 ========== -->
       <aside class="right-panel">
+        <!-- AI 对话面板 -->
+        <AIChatPanel
+          :llm-enabled="llm.isEnabled.value"
+          :current-hand="game.playerHand"
+          :deck-remaining="game.deck.remainingCount"
+          :melds="game.playerMelds"
+          :round="game.round"
+        />
+
         <div class="history-section">
           <div class="section-label">📜 操作记录</div>
           <div class="history-list">
@@ -336,6 +374,14 @@
         </div>
       </aside>
     </main>
+
+    <!-- AI 分析弹窗 -->
+    <AIAnalysisModal
+      v-if="showAIModal && aiModalContext"
+      :visible="showAIModal"
+      :context="aiModalContext"
+      @close="showAIModal = false"
+    />
   </div>
 </template>
 
@@ -350,9 +396,12 @@ import TileView from '@/components/TileView.vue'
 import ProbPanel from '@/components/ProbPanel.vue'
 import DecisionPanel from '@/components/DecisionPanel.vue'
 import EffectiveDrawPanel from '@/components/EffectiveDrawPanel.vue'
+import BayesianPanel from '@/components/BayesianPanel.vue'
+import AIAnalysisModal from '@/components/AIAnalysisModal.vue'
+import AIChatPanel from '@/components/AIChatPanel.vue'
 import { useLLM } from '@/composables/useLLM'
 import { useSimulator } from '@/composables/useSimulator'
-import type { Tile } from '@/types'
+import type { Tile, LLMPromptContext } from '@/types'
 
 const game = useGameStore()
 const llm = useLLM()
@@ -362,6 +411,10 @@ const showSettings = ref(false)
 const showSwitchPanel = ref(false)
 const recentDraws = ref<Tile[]>([])
 const copySuccess = ref(false)
+
+// AI 弹窗状态
+const showAIModal = ref(false)
+const aiModalContext = ref<LLMPromptContext | null>(null)
 
 const isPlayerTurn = computed(() =>
   ['my_draw', 'my_discard', 'waiting_pong', 'waiting_gang', 'waiting_win'].includes(game.gamePhase)
@@ -452,7 +505,34 @@ function onPongConfirm(doIt: boolean) {
 }
 
 function onGangConfirm(doIt: boolean) {
-  doIt ? game.gang('exposed') : game.rejectGang()
+  // 根据 pendingFrom 判断明杠还是暗杠
+  if (doIt) {
+    const gangType = game.pendingFrom !== null ? 'exposed' : 'concealed'
+    game.gang(gangType)
+  } else {
+    game.rejectGang()
+  }
+}
+
+// 当前杠的类型（传给 DecisionPanel）
+const currentGangType = computed(() =>
+  game.pendingFrom !== null ? 'exposed' : 'concealed'
+)
+
+// 打开 AI 分析弹窗
+function openAIModal(trigger: LLMPromptContext['trigger']) {
+  aiModalContext.value = {
+    trigger,
+    currentHand: game.playerHand,
+    visibleTiles: game.deck.visibleTiles,
+    deckRemaining: game.deck.remainingCount,
+    probabilityAnalysis: game.probability,
+    pendingPong: game.pendingPongTile,
+    pendingGang: game.pendingGangTile,
+    melds: game.playerMelds,
+    round: game.round,
+  }
+  showAIModal.value = true
 }
 
 async function runSimulator() {
@@ -480,7 +560,7 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 12px 20px;
+  padding: 14px 24px;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
@@ -489,21 +569,22 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
 .app-icon {
-  font-size: 24px;
-  filter: drop-shadow(0 0 8px rgba(255,107,107,0.5));
+  font-size: 28px;
+  filter: drop-shadow(0 0 10px rgba(255,94,94,0.6));
 }
 
 .app-title {
-  font-size: 18px;
-  font-weight: bold;
+  font-size: 20px;
+  font-weight: 800;
   background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  letter-spacing: -0.3px;
 }
 
 .header-right {
@@ -515,43 +596,44 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .deck-counter {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
+  gap: 7px;
+  padding: 5px 14px;
   background: var(--color-card);
   border-radius: 20px;
   border: 1px solid var(--color-border);
 }
 
 .deck-label {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
 }
 
 .deck-value {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 20px;
+  font-weight: 800;
   color: var(--color-accent);
-  min-width: 24px;
+  min-width: 28px;
   text-align: center;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .round-badge {
-  padding: 4px 12px;
+  padding: 5px 14px;
   background: var(--color-card);
   border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--color-text);
   border: 1px solid var(--color-border);
 }
 
 .phase-badge {
-  padding: 4px 14px;
+  padding: 5px 16px;
   border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -687,28 +769,30 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 }
 
 /* ============================================================
-   主布局
+   主布局 — 三栏升级版
    ============================================================ */
 .app-main {
   display: grid;
-  grid-template-columns: 280px 1fr 240px;
-  gap: 12px;
-  padding: 12px;
+  grid-template-columns: 360px 1fr 320px;
+  gap: 14px;
+  padding: 14px;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
 .left-panel, .right-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  overflow: hidden;
+  gap: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .center-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   overflow: auto;
 }
 
@@ -716,12 +800,12 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
    通用 Section 样式
    ============================================================ */
 .section-label {
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -744,8 +828,8 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .status-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
+  gap: 12px;
+  padding: 16px 20px;
   background: var(--color-card);
   border-radius: var(--radius);
   border: 1px solid var(--color-border);
@@ -753,18 +837,21 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 }
 
 .status-card.highlight {
-  background: linear-gradient(135deg, var(--color-card), var(--color-card-hover));
+  background: linear-gradient(135deg, var(--color-card), rgba(255,94,94,0.08));
   border-color: var(--color-primary);
-  box-shadow: 0 0 15px rgba(255,107,107,0.2);
+  box-shadow: 0 0 20px rgba(255,94,94,0.18);
 }
 
 .status-icon {
-  font-size: 24px;
+  font-size: 30px;
+  flex-shrink: 0;
 }
 
 .status-text {
-  font-size: 14px;
+  font-size: 17px;
+  font-weight: 600;
   color: var(--color-text);
+  line-height: 1.3;
 }
 
 /* ============================================================
@@ -773,28 +860,28 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .melds-section, .hand-section, .waiting-section, .switch-section, .action-section {
   background: var(--color-card);
   border-radius: var(--radius);
-  padding: 12px 14px;
+  padding: 16px 18px;
   border: 1px solid var(--color-border);
 }
 
 .count-tag {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-text-muted);
-  font-weight: normal;
+  font-weight: 500;
   background: var(--color-surface);
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 10px;
-  margin-left: 4px;
+  margin-left: 6px;
 }
 
 .ready-tag {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-success);
-  font-weight: normal;
-  background: rgba(72,219,251,0.15);
-  padding: 2px 8px;
+  font-weight: 600;
+  background: rgba(61,217,192,0.12);
+  padding: 2px 10px;
   border-radius: 10px;
-  margin-left: 4px;
+  margin-left: 6px;
   animation: pulse 2s infinite;
 }
 
@@ -833,18 +920,19 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .hand-tiles {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 6px;
 }
 
 .copy-btn {
-  font-size: 11px;
-  padding: 4px 10px;
+  font-size: 13px;
+  padding: 5px 12px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--color-text-muted);
   cursor: pointer;
   transition: all 0.2s;
+  font-weight: 600;
 }
 
 .copy-btn:hover {
@@ -897,17 +985,21 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 }
 
 .start-btn, .action-btn {
-  font-size: 16px;
-  height: 48px;
+  font-size: 18px;
+  height: 54px;
+  font-weight: 700;
 }
 
 .decision-buttons {
   display: flex;
-  gap: 8px;
+  gap: 10px;
 }
 
 .decision-buttons .n-button {
   flex: 1;
+  height: 52px;
+  font-size: 17px;
+  font-weight: 700;
 }
 
 .win-btn {
@@ -937,50 +1029,52 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .river-section {
   background: var(--color-card);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--color-border);
 }
 
 .opponents-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
 }
 
 .river-card {
-  padding: 10px;
+  padding: 12px 14px;
   background: var(--color-surface);
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--color-border);
-  min-height: 60px;
+  min-height: 80px;
+  transition: border-color 0.2s;
 }
 
 .river-card.me {
   border-color: var(--color-primary);
-  background: linear-gradient(135deg, var(--color-card), var(--color-surface));
+  background: linear-gradient(135deg, var(--color-card), rgba(255,94,94,0.06));
 }
 
 .river-card.active {
   border-color: var(--color-accent);
-  box-shadow: 0 0 10px rgba(254,202,87,0.2);
+  box-shadow: 0 0 12px rgba(247,201,72,0.2);
 }
 
 .river-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .river-name {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--color-text);
 }
 
 .river-count {
-  font-size: 10px;
-  color: var(--color-text-dim);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  font-weight: 600;
 }
 
 .last-discard {
@@ -1008,38 +1102,40 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .simulator-section {
   background: var(--color-card);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--color-border);
 }
 
 .sim-controls {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .sim-result {
   display: flex;
-  gap: 16px;
+  gap: 24px;
 }
 
 .sim-stat {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .stat-label {
-  font-size: 10px;
+  font-size: 12px;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 1px;
+  font-weight: 600;
 }
 
 .stat-value {
-  font-size: 20px;
-  font-weight: bold;
+  font-size: 26px;
+  font-weight: 800;
   color: var(--color-text);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 /* ============================================================
@@ -1048,12 +1144,13 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .history-section {
   background: var(--color-card);
   border-radius: var(--radius);
-  padding: 14px 16px;
+  padding: 16px 18px;
   border: 1px solid var(--color-border);
   flex: 1;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 300px;
 }
 
 .history-section .section-label {
@@ -1063,7 +1160,7 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .history-list {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   overflow-y: auto;
   flex: 1;
 }
@@ -1071,32 +1168,41 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 .history-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  padding: 4px 0;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 4px;
   border-bottom: 1px solid var(--color-border);
+  transition: background 0.15s;
+}
+
+.history-item:hover {
+  background: var(--color-surface);
+  border-radius: 6px;
 }
 
 .history-round {
-  color: var(--color-text-dim);
-  min-width: 16px;
-  font-size: 10px;
+  color: var(--color-text-muted);
+  min-width: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .history-type {
-  min-width: 20px;
-  font-weight: 600;
+  min-width: 24px;
+  font-weight: 700;
+  font-size: 13px;
 }
 
 .history-type.draw { color: var(--color-success); }
-.history-type.discard { color: var(--color-text-muted); }
+.history-type.discard { color: var(--color-text-secondary); }
 .history-type.pong { color: var(--color-primary); }
 .history-type.gang { color: var(--color-accent); }
 .history-type.self_draw { color: var(--color-gold); }
 
 .history-from {
-  color: var(--color-text-dim);
-  font-size: 10px;
+  color: var(--color-text-muted);
+  font-size: 12px;
   margin-left: auto;
 }
 
@@ -1142,134 +1248,48 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
   max-height: 200px;
 }
 
-/* ============================================================
-   移动端适配
-   ============================================================ */
+@media (max-width: 1280px) {
+  .app-main {
+    grid-template-columns: 320px 1fr 290px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-main {
+    grid-template-columns: 290px 1fr;
+    grid-template-rows: auto auto;
+  }
+  .right-panel {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 768px) {
-  .app-header {
-    padding: 8px 12px;
-    gap: 8px;
-  }
-
-  .app-icon {
-    font-size: 20px;
-  }
-
-  .app-title {
-    font-size: 14px;
-  }
-
-  .header-right {
-    gap: 8px;
-  }
-
-  .deck-counter {
-    padding: 3px 8px;
-    gap: 4px;
-  }
-
-  .deck-label {
-    font-size: 9px;
-  }
-
-  .deck-value {
-    font-size: 13px;
-    min-width: 18px;
-  }
-
-  .round-badge,
-  .phase-badge {
-    font-size: 10px;
-    padding: 3px 8px;
-  }
-
-  .settings-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 14px;
-  }
+  .app-header { padding: 10px 14px; gap: 8px; }
+  .app-title { font-size: 16px; }
+  .header-right { gap: 8px; }
+  .deck-value { font-size: 16px; }
+  .round-badge, .phase-badge { font-size: 11px; padding: 3px 10px; }
 
   .app-main {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto;
-    gap: 8px;
-    padding: 8px;
+    gap: 10px;
+    padding: 10px;
     overflow-y: auto;
   }
 
-  .left-panel,
-  .center-panel,
-  .right-panel {
-    overflow: visible;
-  }
+  .left-panel, .center-panel, .right-panel { overflow: visible; }
+  .status-icon { font-size: 24px; }
+  .status-text { font-size: 15px; }
+  .stat-value { font-size: 22px; }
 
-  .status-card {
-    padding: 10px 12px;
-  }
-
-  .status-icon {
-    font-size: 20px;
-  }
-
-  .status-text {
-    font-size: 13px;
-  }
-
-  .hand-section,
-  .melds-section,
-  .waiting-section,
-  .switch-section,
-  .action-section,
-  .river-section,
-  .simulator-section,
-  .history-section {
-    padding: 10px 12px;
-  }
-
-  .section-label {
-    font-size: 10px;
-    letter-spacing: 1px;
-  }
-
-  .start-btn,
-  .action-btn {
-    font-size: 14px;
-    height: 44px;
-  }
-
-  .sim-result {
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .stat-value {
-    font-size: 18px;
-  }
-
-  .settings-body {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
-  }
-
-  .setting-item.full {
-    min-width: auto;
-  }
-
-  .setting-item input[type="text"],
-  .setting-item input[type="password"] {
-    min-width: auto;
-    width: 100%;
-  }
+  .settings-body { flex-direction: column; align-items: stretch; gap: 10px; }
+  .setting-item.full { min-width: auto; }
 }
 
 @media (max-width: 480px) {
-  .app-title {
-    display: none;
-  }
-
-  .round-badge {
-    display: none;
-  }
+  .app-title { display: none; }
+  .round-badge { display: none; }
 }
 </style>

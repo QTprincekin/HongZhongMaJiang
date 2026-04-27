@@ -137,30 +137,30 @@ const tileImageSrc = computed(() => {
 
 /* 默认尺寸（手牌） */
 .tile:not(.small):not(.mini):not(.meld-tile) {
-  width: 48px;
-  height: 60px;
-  font-size: 20px;
+  width: 58px;
+  height: 72px;
+  font-size: 24px;
 }
 
 /* 小尺寸（河面） */
 .tile.small {
-  width: 34px;
-  height: 42px;
-  font-size: 15px;
+  width: 40px;
+  height: 50px;
+  font-size: 17px;
 }
 
 /* 极小（副露/听牌提示） */
 .tile.mini {
-  width: 30px;
-  height: 36px;
-  font-size: 13px;
+  width: 34px;
+  height: 42px;
+  font-size: 14px;
 }
 
 /* 副露牌 */
 .tile.meld-tile {
-  width: 30px;
-  height: 36px;
-  font-size: 13px;
+  width: 34px;
+  height: 42px;
+  font-size: 14px;
 }
 
 /* Hover - 手牌悬停 */
@@ -224,25 +224,24 @@ const tileImageSrc = computed(() => {
   z-index: 2;
 }
 
-/* 移动端牌尺寸缩小 */
 @media (max-width: 768px) {
   .tile:not(.small):not(.mini):not(.meld-tile) {
-    width: 38px;
-    height: 48px;
-    font-size: 16px;
+    width: 46px;
+    height: 57px;
+    font-size: 20px;
   }
 
   .tile.small {
-    width: 28px;
-    height: 34px;
-    font-size: 12px;
+    width: 32px;
+    height: 40px;
+    font-size: 14px;
   }
 
   .tile.mini,
   .tile.meld-tile {
-    width: 24px;
-    height: 30px;
-    font-size: 11px;
+    width: 28px;
+    height: 35px;
+    font-size: 12px;
   }
 
   .tile-count {

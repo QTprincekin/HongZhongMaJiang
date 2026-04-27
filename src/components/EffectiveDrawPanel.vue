@@ -187,8 +187,8 @@ function comboLabel(type: string): string {
 .panel-icon { font-size: 18px; }
 
 .panel-title {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 700;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 1.5px;
@@ -196,9 +196,9 @@ function comboLabel(type: string): string {
 
 .shanten-badge {
   margin-left: auto;
-  padding: 2px 10px;
+  padding: 4px 12px;
   border-radius: 12px;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 700;
 }
 .shanten-badge.win { background: var(--color-gold); color: #1a1a2e; }
@@ -211,8 +211,8 @@ function comboLabel(type: string): string {
   text-align: center;
   padding: 20px 0;
 }
-.eff-win-icon { font-size: 36px; margin-bottom: 8px; }
-.eff-win-text { font-size: 16px; color: var(--color-gold); font-weight: bold; }
+.eff-win-icon { font-size: 48px; margin-bottom: 12px; }
+.eff-win-text { font-size: 20px; color: var(--color-gold); font-weight: bold; }
 
 /* 摘要 */
 .eff-summary {
@@ -223,36 +223,37 @@ function comboLabel(type: string): string {
 .summary-item {
   flex: 1;
   text-align: center;
-  padding: 8px 4px;
+  padding: 12px 6px;
   background: var(--color-surface);
   border-radius: 8px;
   border: 1px solid var(--color-border);
 }
 .summary-label {
   display: block;
-  font-size: 10px;
+  font-size: 13px;
   color: var(--color-text-muted);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  font-weight: 600;
 }
 .summary-value {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 22px;
+  font-weight: 800;
   color: var(--color-text);
+  font-family: 'JetBrains Mono', monospace;
 }
 .summary-value.good { color: var(--color-success); }
 .summary-value.mid { color: var(--color-accent); }
 .summary-value.high { color: var(--color-success); text-shadow: 0 0 8px rgba(72,219,251,0.4); }
 .summary-value.low { color: var(--color-danger); }
 
-/* 进张率进度条 */
 .rate-bar {
-  height: 6px;
+  height: 10px;
   background: var(--color-surface);
-  border-radius: 3px;
+  border-radius: 5px;
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 .rate-bar-fill {
   height: 100%;
@@ -268,17 +269,17 @@ function comboLabel(type: string): string {
 .eff-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
-  max-height: 400px;
+  gap: 10px;
+  max-height: 440px;
   overflow-y: auto;
 }
 .eff-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
+  gap: 8px;
+  padding: 8px;
   background: var(--color-surface);
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--color-border);
   transition: all 0.2s;
   min-width: 0;
@@ -293,9 +294,10 @@ function comboLabel(type: string): string {
   flex-shrink: 0;
 }
 .eff-remaining {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--color-accent);
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
 }
 .eff-combos {
   display: flex;
@@ -309,9 +311,9 @@ function comboLabel(type: string): string {
   gap: 4px;
 }
 .combo-type {
-  font-size: 9px;
-  padding: 1px 4px;
-  border-radius: 3px;
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
   background: var(--color-card);
   color: var(--color-text-muted);
   font-weight: 600;
@@ -327,23 +329,24 @@ function comboLabel(type: string): string {
 
 /* Phase 2: 打摸联动 */
 .discard-header {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .discard-hint {
-  font-size: 11px;
+  font-size: 14px;
   color: var(--color-text-muted);
+  font-weight: 600;
 }
 .discard-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 360px;
+  gap: 10px;
+  max-height: 400px;
   overflow-y: auto;
 }
 .discard-item {
-  padding: 8px 10px;
+  padding: 12px 14px;
   background: var(--color-surface);
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid var(--color-border);
   transition: all 0.2s;
 }
@@ -358,12 +361,12 @@ function comboLabel(type: string): string {
   margin-bottom: 6px;
 }
 .best-tag {
-  font-size: 9px;
-  padding: 1px 6px;
+  font-size: 11px;
+  padding: 2px 8px;
   border-radius: 4px;
   background: var(--color-success);
   color: #0f0f1a;
-  font-weight: 700;
+  font-weight: 800;
 }
 .discard-stats {
   display: flex;
@@ -376,13 +379,15 @@ function comboLabel(type: string): string {
   gap: 4px;
 }
 .discard-stat .stat-label {
-  font-size: 10px;
+  font-size: 13px;
   color: var(--color-text-dim);
+  font-weight: 600;
 }
 .discard-stat .stat-value {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 16px;
+  font-weight: 700;
   color: var(--color-text);
+  font-family: 'JetBrains Mono', monospace;
 }
 .discard-stat .stat-value.high { color: var(--color-success); }
 .discard-stat .stat-value.mid { color: var(--color-accent); }

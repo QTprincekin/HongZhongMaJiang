@@ -143,6 +143,7 @@ export interface LLMConfig {
   model: string
   maxTokens: number
   temperature: number
+  showReasoning: boolean
   enabledTriggers: LLMTrigger[]
 }
 

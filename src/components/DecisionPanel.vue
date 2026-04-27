@@ -1,8 +1,8 @@
 <template>
   <div class="decision-panel panel" :class="type">
     <div class="panel-header">
-      <span class="panel-icon">{{ type === 'pong' ? '🤔' : '⚡' }}</span>
-      <span class="panel-title">{{ type === 'pong' ? '碰牌决策' : '杠牌决策' }}</span>
+      <span class="panel-icon">{{ panelIcon }}</span>
+      <span class="panel-title">{{ panelTitle }}</span>
     </div>
 
     <!-- 触发信息 -->
@@ -70,7 +70,7 @@
         <div class="decision-option action" :class="{ recommended: gangDecision.shouldGang }">
           <div class="option-header">
             <span class="option-badge do">杠</span>
-            <span class="option-label">明杠</span>
+            <span class="option-label">{{ gangType === 'concealed' ? '暗杠' : '明杠' }}</span>
           </div>
           <div class="option-detail">
             <div class="detail-row">
@@ -121,7 +121,7 @@
         size="large"
         @click="$emit('confirm', true)"
       >
-        {{ type === 'pong' ? '✅ 碰' : '✅ 杠' }}
+        {{ confirmLabel }}
       </n-button>
       <n-button
         size="large"
@@ -129,6 +129,19 @@
       >
         {{ type === 'pong' ? '❌ 不碰' : '❌ 不杠' }}
       </n-button>
+    </div>
+
+    <!-- AI 分析按钮 -->
+    <div class="ai-action">
+      <n-button
+        v-if="llmEnabled"
+        class="ai-btn"
+        size="small"
+        @click="$emit('requestAI')"
+      >
+        🤖 问 AI 深度分析
+      </n-button>
+      <span v-else class="ai-disabled">🤖 配置 AI 后可获取深度分析</span>
     </div>
   </div>
 </template>
@@ -149,9 +162,29 @@ const props = defineProps<{
   visibleTiles: Tile[]
   deckRemaining: number
   probability: ProbabilityState
+  gangType?: 'exposed' | 'concealed'   // 明杠或暗杠
+  llmEnabled?: boolean                  // 是否已配置 LLM
 }>()
 
-defineEmits<{ confirm: [doIt: boolean] }>()
+defineEmits<{ confirm: [doIt: boolean]; requestAI: [] }>()
+
+// 面板图标
+const panelIcon = computed(() => {
+  if (props.type === 'pong') return '🤔'
+  return props.gangType === 'concealed' ? '🔒' : '⚡'
+})
+
+// 面板标题
+const panelTitle = computed(() => {
+  if (props.type === 'pong') return '碰牌决策'
+  return props.gangType === 'concealed' ? '暗杠决策' : '明杠决策'
+})
+
+// 确认按钮文案
+const confirmLabel = computed(() => {
+  if (props.type === 'pong') return '✅ 碰'
+  return props.gangType === 'concealed' ? '🔒 暗杠' : '🀄 明杠'
+})
 
 const pongDecision = computed(() =>
   props.type === 'pong' ? (props.decision as PongDecision) : null
@@ -197,11 +230,11 @@ function probClass(p: number): string {
   margin-bottom: 14px;
 }
 
-.panel-icon { font-size: 22px; }
+.panel-icon { font-size: 26px; }
 
 .panel-title {
-  font-size: 14px;
-  font-weight: bold;
+  font-size: 16px;
+  font-weight: 800;
   color: var(--color-text);
 }
 
@@ -218,8 +251,9 @@ function probClass(p: number): string {
 }
 
 .trigger-label {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-text-muted);
+  font-weight: 600;
 }
 
 /* 决策对比 */
@@ -255,10 +289,10 @@ function probClass(p: number): string {
 }
 
 .option-badge {
-  padding: 3px 10px;
+  padding: 4px 12px;
   border-radius: 6px;
-  font-size: 12px;
-  font-weight: bold;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .option-badge.do {
@@ -273,8 +307,8 @@ function probClass(p: number): string {
 }
 
 .option-label {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--color-text);
 }
 
@@ -289,7 +323,7 @@ function probClass(p: number): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--color-text-muted);
 }
 
@@ -299,8 +333,9 @@ function probClass(p: number): string {
 }
 
 .prob-value {
-  font-size: 14px;
-  font-weight: bold;
+  font-size: 16px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .prob-value.high { color: var(--color-success); }
@@ -308,10 +343,10 @@ function probClass(p: number): string {
 .prob-value.low { color: var(--color-danger); }
 
 .option-reason {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--color-text);
   line-height: 1.5;
-  padding: 8px;
+  padding: 10px;
   background: var(--color-card);
   border-radius: 6px;
 }
@@ -325,16 +360,17 @@ function probClass(p: number): string {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: rgba(254,202,87,0.1);
   border: 1px solid var(--color-accent);
   border-radius: 8px;
   margin-bottom: 14px;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 600;
   color: var(--color-accent);
 }
 
-.gang-hint-icon { font-size: 16px; }
+.gang-hint-icon { font-size: 18px; }
 
 /* 操作按钮 */
 .decision-actions {
@@ -344,8 +380,39 @@ function probClass(p: number): string {
 
 .decision-actions .n-button {
   flex: 1;
-  height: 44px;
-  font-size: 15px;
+  height: 52px;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+/* AI 分析入口 */
+.ai-action {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ai-btn {
+  width: 100%;
+  background: linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.15));
+  border: 1px solid rgba(139,92,246,0.4);
+  color: #a78bfa;
+  font-size: 14px;
   font-weight: 600;
+  height: 38px;
+  transition: all 0.2s;
+}
+
+.ai-btn:hover {
+  background: linear-gradient(135deg, rgba(99,102,241,0.3), rgba(139,92,246,0.3));
+  border-color: #a78bfa;
+  color: #c4b5fd;
+}
+
+.ai-disabled {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  padding: 6px 0;
 }
 </style>
