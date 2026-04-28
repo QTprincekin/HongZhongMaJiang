@@ -172,7 +172,7 @@ export function analyzeGangDraw(
     : 0
 
   // 补摸改善手牌的概率（摸到凑对/凑顺的牌）
-  const improveProb = estimateImproveProb(deck)
+  const improveProb = estimateImproveProb(hand, deck)
 
   // 补摸废牌的概率
   const neutralProb = Math.max(0, 1 - directWinProb - improveProb)
@@ -190,11 +190,56 @@ export function analyzeGangDraw(
   }
 }
 
-// 估算补摸改善手牌的概率
-function estimateImproveProb(deck: DeckState): number {
+/**
+ * 估算补摸改善手牌的概率
+ * 改善 = 摸到的牌能与手牌组成对子/刻子/顺子（使手牌质量提升）
+ * 真实概率 = 有用牌剩余张数 / 牌堆剩余张数
+ */
+function estimateImproveProb(hand: Tile[], deck: DeckState): number {
   const deckRemaining = deck.remainingCount
   if (deckRemaining === 0) return 0
-  // 简化：估算有用牌占总牌堆的比例（30-40%的牌有用）
-  const usefulRatio = 0.35
-  return usefulRatio * (1 / deckRemaining) * deckRemaining // 简化为估算值
+
+  // 统计各花色手牌分布
+  const counts: Record<string, number> = {}
+  for (const t of hand) {
+    if (t.suit === 'red_zhong') continue
+    const key = `${t.suit}_${t.number}`
+    counts[key] = (counts[key] || 0) + 1
+  }
+
+  let usefulCount = 0
+
+  // 有用牌的定义：摸到后能与手牌形成对子/刻子/顺子的牌
+  const countedKeys = new Set<string>()
+
+  for (const t of hand) {
+    if (t.suit === 'red_zhong') continue
+    const key = `${t.suit}_${t.number}`
+    if (countedKeys.has(key)) continue
+    countedKeys.add(key)
+
+    const c = counts[key] || 0
+    const suit = t.suit
+    const num = t.number!
+
+    if (c === 1) {
+      // 单张：摸到相同牌成对，或摸到顺子搭子
+      usefulCount += countInDeck(deck, { suit, number: num }) // 第2张
+      // 顺子搭子：num-1, num+1
+      if (num >= 2) usefulCount += countInDeck(deck, { suit, number: num - 1 })
+      if (num <= 8) usefulCount += countInDeck(deck, { suit, number: num + 1 })
+    } else if (c === 2) {
+      // 已成对：摸到第3张成刻
+      usefulCount += countInDeck(deck, { suit, number: num })
+    }
+    // c >= 3 的牌已够刻子，不再计入
+  }
+
+  return Math.min(usefulCount / deckRemaining, 1)
+}
+
+/** 计算某张牌在牌堆中的剩余张数 */
+function countInDeck(deck: DeckState, tile: Partial<Tile> & { suit: string | import('@/types').TileSuit }): number {
+  if (tile.suit === 'red_zhong') return 0
+  return deck.tiles.filter(t => t.suit === tile.suit && t.number === tile.number).length
 }

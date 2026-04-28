@@ -241,6 +241,41 @@ export interface DiscardRecommendation {
   bestDiscard: DiscardAnalysis        // 推荐打出的牌
 }
 
+// ============================================================
+// 计分系统 - 类型定义
+// ============================================================
+
+// 一局结果
+
+export interface RoundResult {
+  roundNumber: number          // 第几把
+  winner: number               // 胡牌者：0-2=对手，3=玩家，-1=流局
+  isSelfDraw: boolean          // true=自摸，false=点炮
+  winTile?: Tile               // 胡的牌
+  scoreChanges: Record<number, number>  // 各玩家该局得失分
+  // 抓马详情
+  bonusDrawCount?: number      // 本次抓马个数
+  bonusDrawTiles?: Tile[]      // 从牌堆抓到的马
+  bonusHitCount?: number       // 命中目标牌数
+  hasRedZhong?: boolean        // 胡牌时手中是否有红中
+  winnerScore?: number         // 赢家最终得分
+}
+
+// 圈数设置
+export type RoundSetting = 0 | 5 | 10 | 20 | number  // 0=不记分
+
+export const ROUND_OPTIONS: { value: RoundSetting; label: string }[] = [
+  { value: 0, label: '不记分（练习）' },
+  { value: 5, label: '5圈（5把）' },
+  { value: 10, label: '10圈（10把）' },
+  { value: 20, label: '20圈（20把）' },
+  { value: -1, label: '自定义' },
+]
+
+// ============================================================
+// AI 难度等级
+// ============================================================
+
 // AI 难度等级
 export enum AIDifficulty {
   NOVICE = 'novice',       // 新手 - 永远不胡，故意打烂牌

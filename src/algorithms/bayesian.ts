@@ -84,7 +84,10 @@ export function bayesianUpdate(
 
   return {
     tile,
-    posteriorProb: evidence > 0 ? likelihoods.reduce((s, l) => s + (l.prior * l.likelihood / evidence) * (l.k > 0 ? 1 : 0), 0) : 0,
+    // 正确：仅在分子过滤 k>0 的项，避免对整个商乘以 0
+    posteriorProb: evidence > 0
+      ? likelihoods.reduce((s, l) => s + (l.k > 0 ? l.prior * l.likelihood / evidence : 0), 0)
+      : 0,
     priorProb: priors.reduce((s, p) => s + p.prob * p.k, 0) / priors.reduce((s, p) => s + p.prob, 0),
     likelihood: likelihoodFn(action.round),
     evidence,

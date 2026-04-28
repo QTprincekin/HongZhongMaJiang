@@ -12,16 +12,12 @@
           <span class="deck-value">{{ game.deck.remainingCount }}</span>
         </div>
         <div v-if="game.gamePhase !== 'init'" class="round-badge">
+          <template v-if="game.totalRounds > 0">第 {{ game.currentRoundNumber }}/{{ game.totalRounds }} 把 · </template>
           第 {{ game.round }} 巡
         </div>
         <div class="phase-badge" :class="phaseClass">
           {{ phaseLabel }}
         </div>
-        <select v-model="game.aiDifficulty" class="difficulty-select" @change="game.setAIDifficulty(game.aiDifficulty)">
-          <option v-for="(cfg, key) in AI_DIFFICULTY_CONFIG" :key="key" :value="key">
-            {{ cfg.label }}
-          </option>
-        </select>
         <button class="settings-btn" @click="showSettings = !showSettings" :class="{ active: showSettings }">
           ⚙️
         </button>
@@ -119,28 +115,13 @@
           </div>
         </div>
 
-        <!-- 换向分析 -->
-        <div v-if="showSwitchPanel && switchResult" class="switch-section">
-          <div class="section-label">🔄 换向分析</div>
-          <div class="switch-verdict" :class="{ good: switchResult.shouldSwitch }">
-            {{ switchResult.shouldSwitch ? '✅ 建议换向' : '❌ 保持当前' }}
-          </div>
-          <div class="switch-reason">{{ switchResult.reason }}</div>
-        </div>
-
         <!-- 操作区 -->
         <div class="action-section">
-          <!-- 初始状态 -->
-          <n-button
+          <!-- 初始状态：开局设置面板 -->
+          <GameSetupPanel
             v-if="game.gamePhase === 'init'"
-            type="primary"
-            size="large"
-            block
-            class="start-btn"
-            @click="game.startGame()"
-          >
-            🎮 开始游戏
-          </n-button>
+            @start="onGameStart"
+          />
 
           <!-- 摸牌阶段 -->
           <template v-else-if="game.gamePhase === 'my_draw'">
@@ -236,6 +217,16 @@
             🔄 重新开始
           </n-button>
         </div>
+
+        <!-- 记分面板 -->
+        <ScorePanel
+          v-if="game.totalRounds > 0 && game.gamePhase !== 'init'"
+          :player-score="game.playerScore"
+          :total-rounds="game.totalRounds"
+          :current-round="game.currentRoundNumber"
+          :round-history="game.roundHistory"
+          :opponent-names="game.opponents.map((o: any) => o.name)"
+        />
       </aside>
 
       <!-- ========== 中间面板 ========== -->
@@ -262,9 +253,24 @@
             >
               <div class="river-header">
                 <span class="river-name">{{ opp.name }}</span>
+                <span class="opp-hand-count">{{ opp.hand.length }}张</span>
                 <span v-if="opp.lastDiscard" class="last-discard">
                   {{ formatTile(opp.lastDiscard) }}
                 </span>
+              </div>
+              <!-- 对手副露展示 -->
+              <div v-if="opp.melds.length > 0" class="opp-melds-row">
+                <div v-for="(meld, mi) in opp.melds" :key="mi" class="opp-meld-item">
+                  <span class="opp-meld-tag" :class="meld.type">{{ meldTypeLabel(meld.type) }}</span>
+                  <div class="opp-meld-tiles">
+                    <TileView
+                      v-for="j in (meld.type === 'concealed_gang' ? 4 : 3)"
+                      :key="j"
+                      :tile="meld.tile"
+                      mini
+                    />
+                  </div>
+                </div>
               </div>
               <div class="river-tiles">
                 <TileView v-for="(tile, i) in opp.river" :key="i" :tile="tile" small />
@@ -382,16 +388,26 @@
       :context="aiModalContext"
       @close="showAIModal = false"
     />
+
+    <!-- 对手胡牌亮牌弹窗 -->
+    <OpponentWinModal
+      v-if="game.opponentWinHand && game.gamePhase === 'ended'"
+      :visible="!!game.opponentWinHand"
+      :data="game.opponentWinHand"
+      :opponent-name="getOpponentWinName()"
+      :melds="getOpponentWinMelds()"
+      :scoring-info="getScoringInfo()"
+      @close="onWinModalClose"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed } from 'vue'
 import { NButton } from 'naive-ui'
 import { useGameStore } from '@/stores/gameStore'
-import { AI_DIFFICULTY_CONFIG } from '@/types'
 import { formatTile as _formatTile } from '@/algorithms/deck'
-import { switchDecision } from '@/algorithms/switch-decision'
+
 import TileView from '@/components/TileView.vue'
 import ProbPanel from '@/components/ProbPanel.vue'
 import DecisionPanel from '@/components/DecisionPanel.vue'
@@ -399,17 +415,18 @@ import EffectiveDrawPanel from '@/components/EffectiveDrawPanel.vue'
 import BayesianPanel from '@/components/BayesianPanel.vue'
 import AIAnalysisModal from '@/components/AIAnalysisModal.vue'
 import AIChatPanel from '@/components/AIChatPanel.vue'
+import GameSetupPanel from '@/components/GameSetupPanel.vue'
+import ScorePanel from '@/components/ScorePanel.vue'
+import OpponentWinModal from '@/components/OpponentWinModal.vue'
 import { useLLM } from '@/composables/useLLM'
 import { useSimulator } from '@/composables/useSimulator'
-import type { Tile, LLMPromptContext } from '@/types'
+import type { Tile, LLMPromptContext, AIDifficulty, Meld } from '@/types'
 
 const game = useGameStore()
 const llm = useLLM()
 const sim = useSimulator()
 
 const showSettings = ref(false)
-const showSwitchPanel = ref(false)
-const recentDraws = ref<Tile[]>([])
 const copySuccess = ref(false)
 
 // AI 弹窗状态
@@ -473,17 +490,6 @@ async function copyHand() {
   }
 }
 
-watch(() => game.history, (history) => {
-  const draws = history.filter((a) => a.type === 'draw' && a.tile).slice(-5).map((a) => a.tile!)
-  recentDraws.value = draws
-  if (draws.length >= 3) {
-    const result = switchDecision(game.playerHand, draws, game.deck)
-    switchResult.value = result
-    showSwitchPanel.value = true
-  }
-}, { deep: true })
-
-const switchResult = ref<ReturnType<typeof switchDecision> | null>(null)
 
 function selectTile(tile: any) {
   if (game.gamePhase !== 'my_discard') return
@@ -543,6 +549,48 @@ async function runSimulator() {
 
 const llmConfig = ref({ ...llm.config.value })
 function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
+
+// 开局设置
+function onGameStart(difficulty: AIDifficulty, rounds: number) {
+  game.setAIDifficulty(difficulty)
+  game.setTotalRounds(rounds)
+  game.startGame()
+}
+
+// 对手胡牌亮牌弹窗辅助
+function getOpponentWinName(): string {
+  const data = game.opponentWinHand
+  if (!data) return ''
+  if (data.opponentId >= 3) return '你'
+  return game.opponents[data.opponentId]?.name || '对手'
+}
+
+function getOpponentWinMelds(): Meld[] {
+  const data = game.opponentWinHand
+  if (!data) return []
+  if (data.opponentId >= 3) return game.playerMelds
+  return game.opponents[data.opponentId]?.melds || []
+}
+
+function getScoringInfo() {
+  if (game.totalRounds === 0) return undefined
+  const history = game.roundHistory
+  if (history.length === 0) return undefined
+  const last = history[history.length - 1]
+  if (!last.bonusDrawTiles || last.bonusDrawTiles.length === 0) return undefined
+  return {
+    bonusDrawCount: last.bonusDrawCount || 0,
+    bonusDrawTiles: last.bonusDrawTiles || [],
+    hitCount: last.bonusHitCount || 0,
+    hasRedZhong: last.hasRedZhong ?? true,
+    winnerTotal: last.winnerScore || 0,
+    streak: game.winStreak,
+  }
+}
+
+function onWinModalClose() {
+  game.confirmRoundEnd()
+}
 </script>
 
 <style scoped>
@@ -1021,6 +1069,7 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
 
 .reset-btn {
   margin-top: 4px;
+  color: #fff !important;
 }
 
 /* ============================================================
@@ -1081,6 +1130,50 @@ function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
   font-size: 12px;
   font-weight: bold;
   color: var(--color-primary);
+}
+
+.opp-hand-count {
+  font-size: 11px;
+  color: var(--color-text-dim);
+  font-weight: 600;
+  background: var(--color-card);
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: auto;
+  margin-right: 4px;
+}
+
+/* 对手副露 */
+.opp-melds-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--color-border);
+}
+
+.opp-meld-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.opp-meld-tag {
+  font-size: 9px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.opp-meld-tag.pong { background: var(--color-success); color: #0f0f1a; }
+.opp-meld-tag.exposed_gang { background: var(--color-accent); color: #1a1a2e; }
+.opp-meld-tag.concealed_gang { background: var(--color-primary); color: #fff; }
+
+.opp-meld-tiles {
+  display: flex;
+  gap: 1px;
 }
 
 .river-tiles {

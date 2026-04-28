@@ -1,9 +1,9 @@
 # 🀄 红中麻将概率训练系统 - 开发文档
 
 **项目名称：** HongZhongMaJiang（红中麻将概率训练系统）
-**版本：** V1.2（新增杠牌决策分析）
+**版本：** V1.3（代码审查后更新）
 **目录：** `H:\01-Project\2026\21- HongZhongMaJiang`
-**状态：** 待开发
+**状态：** 功能主体完成，存在少量已知Bug待修复
 
 ---
 
@@ -25,6 +25,20 @@
 3. **可验证**：模拟器模式验证你的决策长期是否正确
 4. **可学习**：每个建议都附带解释，不只是给答案
 5. **AI增强**：在关键决策点，可调用LLM做深度分析（可选功能）
+
+### 1.4 技术栈（实际）
+
+| 层级 | 技术 | 版本 |
+|------|------|------|
+| 桌面框架 | Tauri 2.x | ^2.0 |
+| 前端框架 | Vue 3 + TypeScript | ^3.4 |
+| 状态管理 | Pinia | ^2.1 |
+| 构建工具 | Vite | ^6.0 |
+| UI组件库 | Naive UI | ^2.38 |
+| 牌图素材 | SVG | — |
+| 测试框架 | Vitest | ^2.0 |
+
+> ⚠️ 注意：TileSuit 实际使用 `'dot'|'bamboo'|'char'|'red_zhong'` 而非中文，与文档早期描述不符，已更正。
 
 ---
 
@@ -138,60 +152,61 @@
 ### 3.1 牌的定义
 
 ```typescript
-// 牌的类型
-enum TileSuit {
-  DOT = '筒',      // 1-9
-  BAMBOO = '条',   // 1-9
-  CHARACTER = '万', // 1-9
-  RED_ZHONG = '红中' // 赖子
+// 牌的花色（实际代码）
+export enum TileSuit {
+  DOT = 'dot',           // 筒 1-9
+  BAMBOO = 'bamboo',    // 条 1-9
+  CHARACTER = 'char',    // 万 1-9
+  RED_ZHONG = 'red_zhong', // 红中（赖子）
 }
 
 // 单张牌
 interface Tile {
-  suit: TileSuit;
-  number: number;  // 1-9，红中时为 null
-  isWild: boolean; // 是否作为赖子使用
+  suit: TileSuit
+  number: number | null  // 1-9，红中为 null
+  id: string            // 唯一标识，如 "dot_3_0"
 }
 
 // 示例
-// { suit: '万', number: 3 }  → 3万
-// { suit: '红中', number: null } → 红中
+// { suit: TileSuit.CHARACTER, number: 3, id: "char_3_0" }  → 3万
+// { suit: TileSuit.RED_ZHONG, number: null, id: "red_zhong_0" } → 红中
 ```
 
 ### 3.2 牌堆状态
 
 ```typescript
+// 实际代码
 interface DeckState {
-  totalTiles: number;      // 112
-  remainingTiles: number;  // 随抓牌/杠补摸减少
-  remainingByType: Map<string, number>;  // 每种牌剩余数量
-  drawnTiles: Tile[];       // 已摸走的牌（正常摸牌）
-  visibleTiles: Tile[];     // 已见牌（河面+碰杠+明牌）
-  // 杠牌追踪 ⭐
-  gangCount: number;        // 已杠次数（每次杠消耗1张补摸）
-  gangTiles: Tile[];        // 杠后补摸走的牌（从已摸牌中标记）
+  tiles: Tile[]           // 剩余牌堆（动态数组，摸牌时shift）
+  totalCount: number      // 原始112张
+  remainingCount: number  // 当前剩余
+  visibleTiles: Tile[]    // 已见牌（河面+碰杠亮出的）
+  gangDraws: Tile[]       // 杠后补摸走的牌（从牌堆末尾摸）
 }
 ```
 
 ### 3.3 手牌状态
 
 ```typescript
+// 实际代码
 interface Meld {
-  type: 'pong' | 'exposed_gang' | 'concealed_gang'; // 碰牌/明杠/暗杠 ⭐
-  tile: Tile;              // 涉及的牌（如：333万）
-  drawnAfter?: Tile;        // 杠后补摸的牌（明杠时有）⭐
-  exposedBy?: string;      // 谁碰/杠的（对手A/自己）⭐
+  type: 'pong' | 'exposed_gang' | 'concealed_gang'
+  tile: Tile       // 涉及的牌（如 333万）
+  drawnAfter?: Tile // 杠后补摸的牌
+  fromOpponent?: boolean // 是否从对手处碰/杠来的（碰/点杠）
 }
 
+// 实际代码：HandState 概念上不存在单独类型，
+// 手牌状态由 gameStore 中的 playerHand + playerMelds 管理
 interface HandState {
   tiles: Tile[];            // 当前手牌（含补摸牌）
   melds: Meld[];            // 已完成的副露（碰/明杠/暗杠）
   isReady: boolean;         // 是否听牌
   waitingTiles: Tile[];     // 等牌列表
   waitingCount: number;     // 听牌数
-  // 辅助信息
-  pendingPongTile?: Tile;   // 当前可碰的牌（对手刚打的）⭐
-  pendingGangTile?: Tile;  // 当前可杠的牌（刚碰+对手打同牌）⭐
+  // 辅助信息（实际在 gameStore 中）
+  pendingPongTile?: Tile;   // 当前可碰的牌（对手刚打的）
+  pendingGangTile?: Tile;  // 当前可杠的牌（刚碰+对手打同牌）
 }
 ```
 
