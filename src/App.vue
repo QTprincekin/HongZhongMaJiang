@@ -1,10 +1,22 @@
 <template>
-  <div class="app">
+  <div v-show="currentView === 'game'" class="app">
     <!-- 顶部导航 -->
     <header class="app-header">
       <div class="header-left">
         <span class="app-icon">🀄</span>
         <span class="app-title">红中麻将概率训练</span>
+        <nav class="view-tabs">
+          <button
+            class="view-tab"
+            :class="{ active: currentView === 'game' }"
+            @click="currentView = 'game'"
+          >训练</button>
+          <button
+            class="view-tab"
+            :class="{ active: currentView === 'tutorial' }"
+            @click="currentView = 'tutorial'"
+          >教程</button>
+        </nav>
       </div>
       <div class="header-right">
         <div class="deck-counter">
@@ -399,7 +411,14 @@
       :scoring-info="getScoringInfo()"
       @close="onWinModalClose"
     />
+
   </div>
+
+  <!-- 教程视图（与训练彼此独立） -->
+  <TutorialView
+    v-if="currentView === 'tutorial'"
+    @back="currentView = 'game'"
+  />
 </template>
 
 <script setup lang="ts">
@@ -420,12 +439,14 @@ import ScorePanel from '@/components/ScorePanel.vue'
 import OpponentWinModal from '@/components/OpponentWinModal.vue'
 import { useLLM } from '@/composables/useLLM'
 import { useSimulator } from '@/composables/useSimulator'
+import TutorialView from '@/components/tutorial/TutorialView.vue'
 import type { Tile, LLMPromptContext, AIDifficulty, Meld } from '@/types'
 
 const game = useGameStore()
 const llm = useLLM()
 const sim = useSimulator()
 
+const currentView = ref<'game' | 'tutorial'>('game')
 const showSettings = ref(false)
 const copySuccess = ref(false)
 
@@ -633,6 +654,38 @@ function onWinModalClose() {
   -webkit-text-fill-color: transparent;
   background-clip: text;
   letter-spacing: -0.3px;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  margin-left: 16px;
+  padding: 4px;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.view-tab {
+  padding: 5px 14px;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.view-tab:hover {
+  color: var(--color-text);
+}
+
+.view-tab.active {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(255, 94, 94, 0.35);
 }
 
 .header-right {

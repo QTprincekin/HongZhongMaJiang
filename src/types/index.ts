@@ -317,3 +317,30 @@ export interface GameAction {
   round: number
   meld?: Meld
 }
+
+// ============================================================
+// 教程系统 - 类型定义
+// ============================================================
+
+export interface TutorialChapter {
+  id: string
+  title: string
+  icon: string
+  sections: TutorialSection[]
+}
+
+export interface TutorialSection {
+  id: string
+  title: string
+  blocks: ContentBlock[]
+}
+
+export type ContentBlock =
+  | { type: 'text'; content: string }
+  | { type: 'heading'; level: 1 | 2 | 3; text: string }
+  | { type: 'tip'; style: 'info' | 'warning' | 'success'; text: string }
+  | { type: 'tileDemo'; tiles: Tile[]; label: string; highlightIds?: string[] }
+  | { type: 'compare'; labelA: string; tilesA: Tile[]; labelB: string; tilesB: Tile[] }
+  | { type: 'list'; items: string[] }
+  | { type: 'rule'; title: string; desc: string }
+  | { type: 'quiz'; question: string; options: string[]; answer: number; explanation: string }

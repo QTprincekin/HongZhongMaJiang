@@ -234,8 +234,7 @@ export const useGameStore = defineStore('game', () => {
     if (gamePhase.value !== 'waiting_win') return
     const tile = playerHand.value[playerHand.value.length - 1]
     history.value.push({ type: 'self_draw', tile, round: round.value })
-    gamePhase.value = 'ended'
-    message.value = '🎉 自摸胡牌！'
+    endRound(3, true, tile)
   }
 
   // 不胡（继续）
