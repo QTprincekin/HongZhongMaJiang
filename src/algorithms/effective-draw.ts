@@ -180,11 +180,17 @@ function estimateRemaining(hand: Tile[], melds: Meld[], tile: Tile): number {
   const total = 4 // 每种牌4张
   // 手牌中已有的数量
   const inHand = hand.filter(t => t.suit === tile.suit && t.number === tile.number).length
-  // 副露中已有的数量
+  // 副露中已有的数量（考虑红中杠只算1张）
   let inMelds = 0
   for (const m of melds) {
     if (m.tile.suit === tile.suit && m.tile.number === tile.number) {
-      inMelds += m.type === 'pong' ? 3 : m.type === 'exposed_gang' || m.type === 'concealed_gang' ? 4 : 0
+      if (m.type === 'red_zhong_gang') {
+        inMelds += 1
+      } else if (m.type === 'pong') {
+        inMelds += 3
+      } else if (m.type === 'exposed_gang' || m.type === 'concealed_gang') {
+        inMelds += 4
+      }
     }
   }
   return Math.max(0, total - inHand - inMelds)

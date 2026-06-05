@@ -14,7 +14,8 @@ import { Tile, TileSuit, Meld, ShantenResult, HandGroup } from '@/types'
  * @param melds 已完成的副露
  */
 export function calculateShanten(hand: Tile[], melds: Meld[] = []): ShantenResult {
-  const completedMelds = melds.length
+  // 红中杠不计入已完成副露（它不是真正的面子）
+  const completedMelds = melds.filter(m => m.type !== 'red_zhong_gang').length
   // 需要的面子数 = 4 - 已完成副露
   const targetMelds = 4 - completedMelds
 
@@ -196,7 +197,8 @@ function searchBestShanten(
  * 用于有效进张遍历时的批量计算
  */
 export function calculateShantenFast(hand: Tile[], melds: Meld[] = []): number {
-  const completedMelds = melds.length
+  // 红中杠不计入已完成副露
+  const completedMelds = melds.filter(m => m.type !== 'red_zhong_gang').length
   const targetMelds = 4 - completedMelds
 
   let rzCount = 0

@@ -172,6 +172,7 @@ export function formatMeld(meld: Meld): string {
     pong: '碰',
     exposed_gang: '明杠',
     concealed_gang: '暗杠',
+    red_zhong_gang: '红中杠',
   }
   return `${typeMap[meld.type]}${tileStr}`
 }

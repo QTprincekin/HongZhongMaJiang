@@ -8,6 +8,7 @@ import {
   Tile, TileSuit, DeckState, Meld, GameAction,
   ProbabilityState, PongDecision, GangDecision,
   AIDifficulty, AI_DIFFICULTY_CONFIG, RoundResult,
+  GameMode, HuType, HU_TYPE_MULTIPLIER, getBonusScore,
 } from '@/types'
 import {
   createDeck, dealHand, drawTile, gangDraw, addVisibleTile,
@@ -65,6 +66,9 @@ export const useGameStore = defineStore('game', () => {
   const hasDrawnThisTurn = ref(false)
   const aiDifficulty = ref<AIDifficulty>(AIDifficulty.NOVICE)
 
+  // 游戏模式
+  const gameMode = ref<GameMode>('hongzhong')
+
   // 圈数系统
   const totalRounds = ref<number>(0)   // 0=不记分/无限
   const currentRoundNumber = ref<number>(1)
@@ -105,6 +109,19 @@ export const useGameStore = defineStore('game', () => {
         waitingTiles: result.waitingTiles.map(t => `${t.suit}_${t.number}`),
       })
     }
+    
+    // 红中杠麻模式：摸到红中不胡牌，而是打出红中进行杠牌
+    // 所以红中不应该算作有效进张
+    if (gameMode.value === 'hongzhong_gang') {
+      const filteredTiles = result.waitingTiles.filter(t => t.suit !== TileSuit.RED_ZHONG)
+      return {
+        ...result,
+        waitingTiles: filteredTiles,
+        waitingCount: filteredTiles.length,
+        isReady: filteredTiles.length > 0,
+      }
+    }
+    
     return result
   })
 
@@ -133,8 +150,22 @@ export const useGameStore = defineStore('game', () => {
   )
 
   // 有效进张分析（13张手牌时：纯摸牌视角）
+  // 计算有效手牌长度（红中杠不计入，因为它是独立的杠牌动作）
+  function getEffectiveHandLength(): number {
+    let meldCount = 0
+    for (const meld of playerMelds.value) {
+      if (meld.type === 'red_zhong_gang') {
+        // 红中杠不计入有效手牌长度，它是独立的杠牌动作
+        continue
+      } else {
+        meldCount += 3
+      }
+    }
+    return playerHand.value.length + meldCount
+  }
+
   const effectiveDrawResult = computed(() => {
-    const handLen = playerHand.value.length + playerMelds.value.length * 3
+    const handLen = getEffectiveHandLength()
     // 只在13张（等摸牌状态）时分析有效进张
     if (handLen !== 13) return null
     return analyzeEffectiveDraws(playerHand.value, playerMelds.value, deck.value)
@@ -142,14 +173,17 @@ export const useGameStore = defineStore('game', () => {
 
   // 打摸联动分析（14张手牌时：摸牌后需要打出）
   const discardRecommendation = computed(() => {
-    const handLen = playerHand.value.length + playerMelds.value.length * 3
+    const handLen = getEffectiveHandLength()
     // 只在14张（需出牌状态）时分析打摸联动
     if (handLen !== 14) return null
     return analyzeDiscardOptions(playerHand.value, playerMelds.value, deck.value)
   })
 
   // ===================== 开始游戏 =====================
-  function startGame() {
+  function startGame(mode?: GameMode) {
+    if (mode) {
+      gameMode.value = mode
+    }
     deck.value = createDeck()
     const { hand: myHand, deck: d1 } = dealHand(deck.value)
     deck.value = d1
@@ -186,6 +220,10 @@ export const useGameStore = defineStore('game', () => {
     }
     gamePhase.value = 'my_draw'
     message.value = `第 ${round.value} 巡，你的回合，请摸牌`
+    
+    if (gameMode.value === 'hongzhong_gang') {
+      message.value += '（红中杠麻模式）'
+    }
   }
 
   // ===================== 摸牌 =====================
@@ -204,6 +242,15 @@ export const useGameStore = defineStore('game', () => {
     hasDrawnThisTurn.value = true
     history.value.push({ type: 'draw', tile, round: round.value })
 
+    // 红中杠麻：检查是否四红中直接胡牌
+    if (gameMode.value === 'hongzhong_gang') {
+      if (checkFourRedZhongWin()) {
+        gamePhase.value = 'waiting_win'
+        message.value = '🎉 四红中！直接胡牌！'
+        return
+      }
+    }
+
     // 检查是否自摸胡牌
     if (checkSelfWin()) {
       gamePhase.value = 'waiting_win'
@@ -219,14 +266,96 @@ export const useGameStore = defineStore('game', () => {
       message.value = `摸到 ${formatTile(tile)}，请打出一张`
     }
     checkConcealedGang()
+    
+    // 红中杠麻：检查是否有红中需要处理（起手红中或刚摸到红中）
+    if (gameMode.value === 'hongzhong_gang') {
+      checkRedZhongGang()
+    }
+  }
+
+  // 检查四红中直接胡牌（红中杠麻专用）
+  function checkFourRedZhongWin(): boolean {
+    const redZhongCount = countTiles(playerHand.value, TileSuit.RED_ZHONG, null)
+    return redZhongCount >= 4
+  }
+
+  // 检查是否有红中可杠（红中杠麻专用）
+  function checkRedZhongGang() {
+    const hasRedZhong = playerHand.value.some(t => t.suit === TileSuit.RED_ZHONG)
+    if (hasRedZhong && gamePhase.value === 'my_discard') {
+      message.value = '检测到红中，可选择打出红中进行杠牌（补摸1张）'
+    }
   }
 
   // 检查是否自摸胡牌（有效牌数 = 手牌 + 副露*3）
   function checkSelfWin(): boolean {
     const effective = playerHand.value.length + playerMelds.value.length * 3
     if (effective !== 14) return false
+    
+    // 红中杠麻模式：摸到红中不胡牌，而是打出红中进行杠牌
+    if (gameMode.value === 'hongzhong_gang') {
+      // 检查手牌中是否有红中（刚摸到的牌）
+      const hasRedZhong = playerHand.value.some(t => t.suit === TileSuit.RED_ZHONG)
+      if (hasRedZhong) {
+        return false
+      }
+    }
+    
     const result = analyzeWaiting(playerHand.value, playerMelds.value)
     return result.isReady
+  }
+
+  // 红中杠牌（红中杠麻专用）
+  function redZhongGang(tile: Tile) {
+    if (gameMode.value !== 'hongzhong_gang') return
+    if (gamePhase.value !== 'my_discard') { message.value = '请先摸牌'; return }
+    if (tile.suit !== TileSuit.RED_ZHONG) { message.value = '只能打出红中进行杠牌'; return }
+    
+    const idx = playerHand.value.findIndex(t => t.id === tile.id)
+    if (idx < 0) { message.value = '找不到这张红中'; return }
+    
+    playerHand.value.splice(idx, 1)
+    playerRiver.value.push(tile)
+    deck.value = addVisibleTile(deck.value, tile)
+    
+    // 添加红中副露
+    playerMelds.value.push({
+      type: 'red_zhong_gang',
+      tile,
+      fromOpponent: false,
+    })
+    
+    history.value.push({ type: 'gang', tile, round: round.value, meld: playerMelds.value[playerMelds.value.length - 1] })
+    
+    // 杠后补摸一张
+    if (deck.value.tiles.length === 0) {
+      gamePhase.value = 'ended'
+      message.value = '牌堆已空，流局'
+      return
+    }
+    
+    const { tile: drawn, deck: newDeck } = gangDraw(deck.value)
+    deck.value = newDeck
+    playerHand.value.push(drawn)
+    playerHand.value.sort(sortTiles)
+    
+    message.value = `打出红中杠牌，补摸 ${formatTile(drawn)}，请打出一张牌`
+    
+    // 检查杠后是否四红中胡牌
+    if (checkFourRedZhongWin()) {
+      gamePhase.value = 'waiting_win'
+      message.value = '🎉 四红中！杠后胡牌！'
+      return
+    }
+    
+    // 检查杠后是否自摸胡牌
+    if (checkSelfWin()) {
+      gamePhase.value = 'waiting_win'
+      message.value = '🎉 杠后自摸胡牌！'
+      return
+    }
+    
+    selectedTile.value = undefined
   }
 
   // 胡牌（自摸）
@@ -369,8 +498,49 @@ export const useGameStore = defineStore('game', () => {
     if (deck.value.tiles.length === 0) { endRound(-1, false) ; return }  // 流局
     const { tile: drawn, deck: newDeck } = gangDraw(deck.value)
     deck.value = newDeck
-    opponents.value[oppIdx].hand.push(drawn)
-    message.value = `${opponents.value[oppIdx].name} 补摸 ${formatTile(drawn)}，出牌中...`
+    
+    const opp = opponents.value[oppIdx]
+    opp.hand.push(drawn)
+    message.value = `${opp.name} 补摸 ${formatTile(drawn)}`
+
+    setTimeout(() => {
+      // 检查是否四红中直接胡牌
+      if (gameMode.value === 'hongzhong_gang') {
+        const rzCount = countRedZhong(opp.hand, opp.melds)
+        if (rzCount >= 4) {
+          endRound(oppIdx, true, drawn)
+          return
+        }
+        
+        // 执行红中单杠，杠完后判定自摸胡牌或出牌
+        handleOpponentRedZhongGang(oppIdx, () => {
+          checkOpponentWinOrDiscardAfterGang(oppIdx, drawn)
+        })
+        return
+      }
+      
+      checkOpponentWinOrDiscardAfterGang(oppIdx, drawn)
+    }, 400)
+  }
+
+  // 杠牌（包括红中单杠）完成后，AI 检查自摸杠开胡牌或打牌的逻辑
+  function checkOpponentWinOrDiscardAfterGang(oppIdx: number, drawnTile: Tile) {
+    if (gamePhase.value === 'ended') return
+    const opp = opponents.value[oppIdx]
+    
+    // 检查是否杠后自摸胡牌（杠上开花）
+    const oppWaiting = analyzeWaiting(opp.hand, opp.melds)
+    if (oppWaiting.isReady) {
+      const config = AI_DIFFICULTY_CONFIG[aiDifficulty.value]
+      const roll = Math.random()
+      if (roll < config.winChance) {
+        // AI 自摸胡牌
+        endRound(oppIdx, true, drawnTile)
+        return
+      }
+    }
+    
+    message.value = `${opp.name} 出牌中...`
     setTimeout(() => opponentDiscardAfterPong(oppIdx), 400)
   }
 
@@ -614,26 +784,101 @@ export const useGameStore = defineStore('game', () => {
     message.value = `${opp.name} 摸牌`
 
     setTimeout(() => {
-      // 1. 检查自摸胡牌
-      const oppWaiting = analyzeWaiting(opp.hand, opp.melds)
-      if (oppWaiting.isReady) {
-        const config = AI_DIFFICULTY_CONFIG[aiDifficulty.value]
-        const roll = Math.random()
-        if (roll < config.winChance) {
-          // AI 自摸胡牌
+      // 检查是否四红中直接胡牌
+      if (gameMode.value === 'hongzhong_gang') {
+        const rzCount = countRedZhong(opp.hand, opp.melds)
+        if (rzCount >= 4) {
           endRound(opponentIdx, true, drawn)
           return
         }
+        
+        // 执行红中杠牌，杠完后判定自摸胡牌或出牌
+        handleOpponentRedZhongGang(opponentIdx, () => {
+          checkOpponentWinOrDiscard(opponentIdx, drawn)
+        })
+        return
       }
 
-      // 2. 对手摸牌后，出牌前，检查是否有人对自己打出牌可碰/杠（这里只有对手间碰杠）
-      // 对手之间的碰杠在出牌响应链中处理
-
-      // 3. 出牌
-      const visibleTiles = deck.value.visibleTiles || []
-      const discardTile = selectOpponentDiscard(opp.hand, visibleTiles, opp.melds)
-      doOpponentDiscard(opponentIdx, discardTile)
+      // 传统模式直接判定自摸或出牌
+      checkOpponentWinOrDiscard(opponentIdx, drawn)
     }, 500)
+  }
+
+  // 提取出来的判定自摸胡牌或出牌逻辑
+  function checkOpponentWinOrDiscard(opponentIdx: number, drawnTile: Tile) {
+    if (gamePhase.value === 'ended') return
+    const opp = opponents.value[opponentIdx]
+    
+    // 1. 检查自摸胡牌
+    const oppWaiting = analyzeWaiting(opp.hand, opp.melds)
+    if (oppWaiting.isReady) {
+      const config = AI_DIFFICULTY_CONFIG[aiDifficulty.value]
+      const roll = Math.random()
+      if (roll < config.winChance) {
+        // AI 自摸胡牌
+        endRound(opponentIdx, true, drawnTile)
+        return
+      }
+    }
+
+    // 2. 出牌
+    const visibleTiles = deck.value.visibleTiles || []
+    const discardTile = selectOpponentDiscard(opp.hand, visibleTiles, opp.melds)
+    doOpponentDiscard(opponentIdx, discardTile)
+  }
+
+  // AI 对手红中单杠决策与补摸循环逻辑
+  function handleOpponentRedZhongGang(oppIdx: number, callback: () => void) {
+    if (gamePhase.value === 'ended') return
+    const opp = opponents.value[oppIdx]
+    const hzIdx = opp.hand.findIndex(t => t.suit === TileSuit.RED_ZHONG)
+    
+    if (hzIdx >= 0) {
+      // 检查在进行红中单杠前，是否已经凑齐四红中直接胡牌
+      const redZhongCount = countRedZhong(opp.hand, opp.melds)
+      if (redZhongCount >= 4) {
+        callback()
+        return
+      }
+      
+      if (deck.value.tiles.length === 0) {
+        endRound(-1, false)  // 流局
+        return
+      }
+      
+      const tile = opp.hand[hzIdx]
+      opp.hand.splice(hzIdx, 1)
+      opp.river.push(tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      
+      const newMeld: Meld = {
+        type: 'red_zhong_gang',
+        tile,
+        fromOpponent: false
+      }
+      opp.melds.push(newMeld)
+      
+      history.value.push({
+        type: 'gang',
+        tile,
+        round: round.value,
+        fromOpponent: oppIdx,
+        meld: newMeld
+      })
+      
+      const { tile: drawn, deck: newDeck } = gangDraw(deck.value)
+      deck.value = newDeck
+      opp.hand.push(drawn)
+      
+      message.value = `${opp.name} 杠红中，补摸 ${formatTile(drawn)}`
+      
+      // 延迟 500ms 递归，模拟真实杠牌效果
+      setTimeout(() => {
+        handleOpponentRedZhongGang(oppIdx, callback)
+      }, 500)
+    } else {
+      callback()
+    }
   }
 
   // 对手正式打出一张牌
@@ -739,8 +984,8 @@ export const useGameStore = defineStore('game', () => {
       message.value = '流局，牌堆已空'
     }
 
-    // 记分模式：抓马计分
-    if (totalRounds.value > 0 && winner >= 0) {
+    // 记分模式：抓马计分（无论是否限制总局数，只要有赢家都计算抓马与得分）
+    if (winner >= 0) {
       // 获取赢家手牌（含副露），判断是否有红中
       const winnerHand = winner < 3 ? opponents.value[winner].hand : playerHand.value
       const winnerMelds = winner < 3 ? opponents.value[winner].melds : playerMelds.value
@@ -761,6 +1006,13 @@ export const useGameStore = defineStore('game', () => {
       result.bonusHitCount = scoreResult.hitCount
       result.hasRedZhong = hasZhong
       result.winnerScore = scoreResult.winnerTotal
+      // 红中杠麻扩展字段
+      result.huType = scoreResult.huType
+      result.redZhongCount = scoreResult.redZhongCount
+      result.scoreMultiplier = scoreResult.scoreMultiplier
+      result.baseScore = scoreResult.baseScore
+      result.bonusScore = scoreResult.bonusScore
+      result.redZhongBonus = scoreResult.redZhongBonus
       for (const [pid, sc] of Object.entries(scoreResult.scores)) {
         playerScore.value[Number(pid)] += sc
       }
@@ -833,6 +1085,14 @@ export const useGameStore = defineStore('game', () => {
     return false
   }
 
+  // 计算胡牌时红中数量（手牌 + 副露中的红中）
+  function countRedZhong(hand: Tile[], melds: Meld[]): number {
+    let count = 0
+    count += hand.filter(t => t.suit === TileSuit.RED_ZHONG).length
+    count += melds.filter(m => m.tile.suit === TileSuit.RED_ZHONG).length
+    return count
+  }
+
   // 判断牌是否为目标牌（1/5/9 + 红中）
   function isBonusTile(tile: Tile): boolean {
     if (tile.suit === TileSuit.RED_ZHONG) return true
@@ -840,7 +1100,72 @@ export const useGameStore = defineStore('game', () => {
     return false
   }
 
-  // 抓马记分算法
+  // 判断胡牌类型（红中杠麻专用）
+  function detectHuType(hand: Tile[], melds: Meld[], isConcealedGangWin: boolean): HuType {
+    // 四红中胡牌
+    const redZhongCount = countRedZhong(hand, melds)
+    if (redZhongCount >= 4) {
+      return 'four_red_zhong'
+    }
+    
+    // 暗杠杠开
+    if (isConcealedGangWin) {
+      return 'concealed_gang_win'
+    }
+    
+    // 对对胡（全刻子，无顺子）
+    if (isAllTriplet(hand, melds)) {
+      return 'all_triplet'
+    }
+    
+    // 大单调（单调一对）
+    if (isSinglePair(hand, melds)) {
+      return 'single_pair'
+    }
+    
+    return 'normal'
+  }
+
+  // 判断是否为对对胡（全刻子）
+  function isAllTriplet(hand: Tile[], melds: Meld[]): boolean {
+    const allTiles = [...hand]
+    melds.forEach(m => {
+      const count = m.type === 'pong' ? 3 : 4
+      for (let i = 0; i < count; i++) {
+        allTiles.push({ ...m.tile, id: `${m.tile.id}_${i}` })
+      }
+    })
+    
+    const counts = new Map<string, number>()
+    for (const t of allTiles) {
+      if (t.suit === TileSuit.RED_ZHONG) continue
+      const key = `${t.suit}_${t.number}`
+      counts.set(key, (counts.get(key) || 0) + 1)
+    }
+    
+    for (const [, count] of counts) {
+      if (count !== 2 && count !== 3 && count !== 4) {
+        return false
+      }
+    }
+    
+    return true
+  }
+
+  // 判断是否为大单调（单调一对）
+  function isSinglePair(hand: Tile[], melds: Meld[]): boolean {
+    const result = analyzeWaiting(hand, melds)
+    if (!result.isReady) return false
+    
+    const waitingTiles = result.waitingTiles
+    if (waitingTiles.length !== 1) return false
+    
+    const waitingTile = waitingTiles[0]
+    const count = countTiles(hand, waitingTile.suit, waitingTile.number)
+    return count === 1
+  }
+
+  // 抓马记分算法（通用）
   function calcRoundScore(
     winner: number,
     hasRedZhong: boolean,
@@ -851,9 +1176,25 @@ export const useGameStore = defineStore('game', () => {
     drawnTiles: Tile[]
     hitCount: number
     winnerTotal: number
+    redZhongCount?: number
+    huType?: HuType
+    scoreMultiplier?: number
+    baseScore?: number
+    bonusScore?: number
+    redZhongBonus?: number
   } {
     const scores: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 }
 
+    // 获取赢家手牌和副露
+    const winnerHand = winner < 3 ? opponents.value[winner].hand : playerHand.value
+    const winnerMelds = winner < 3 ? opponents.value[winner].melds : playerMelds.value
+    
+    // 红中杠麻特殊计分
+    if (gameMode.value === 'hongzhong_gang') {
+      return calcHongZhongGangScore(winner, winnerHand, winnerMelds)
+    }
+
+    // 传统红中麻将计分
     // 1. 底分 10 分
     let total = 10
 
@@ -874,12 +1215,87 @@ export const useGameStore = defineStore('game', () => {
     total += hitCount * 10
 
     // 5. 赢家得分，其他三家各扣 total
-    scores[winner] = total * 3  // 向三家收
+    scores[winner] = total * 3
     for (let i = 0; i < 4; i++) {
       if (i !== winner) scores[i] = -total
     }
 
     return { scores, drawCount, drawnTiles, hitCount, winnerTotal: total * 3 }
+  }
+
+  // 红中杠麻计分算法
+  function calcHongZhongGangScore(
+    winner: number,
+    hand: Tile[],
+    melds: Meld[]
+  ): {
+    scores: Record<number, number>
+    drawCount: number
+    drawnTiles: Tile[]
+    hitCount: number
+    winnerTotal: number
+    redZhongCount: number
+    huType: HuType
+    scoreMultiplier: number
+    baseScore: number
+    bonusScore: number
+    redZhongBonus: number
+  } {
+    const scores: Record<number, number> = { 0: 0, 1: 0, 2: 0, 3: 0 }
+    
+    // 1. 基础分 10 分
+    const baseScore = 10
+    
+    // 2. 计算红中数量
+    const redZhongCount = countRedZhong(hand, melds)
+    
+    // 3. 检测胡牌类型
+    const lastMeld = melds[melds.length - 1]
+    const isConcealedGangWin = lastMeld?.type === 'concealed_gang'
+    const huType = detectHuType(hand, melds, isConcealedGangWin)
+    
+    // 4. 计算倍率（四红中时红中个数不计入加成）
+    let multiplier = HU_TYPE_MULTIPLIER[huType]
+    const isFourRedZhong = huType === 'four_red_zhong'
+    
+    // 5. 抓马（抓1个码）
+    const drawnTiles: Tile[] = []
+    const remaining = deck.value.tiles
+    if (remaining.length > 0) {
+      drawnTiles.push(remaining[0])
+    }
+    
+    // 6. 计算码分（特殊规则：1=100, 2=20, 3=30, 其他=N×10）
+    let bonusScore = 0
+    if (drawnTiles.length > 0 && drawnTiles[0].number !== null) {
+      bonusScore = getBonusScore(drawnTiles[0].number) * multiplier
+    }
+    
+    // 7. 红中加成（四红中时不加）
+    const redZhongBonus = isFourRedZhong ? 0 : redZhongCount * 10
+    
+    // 8. 总分
+    const total = baseScore + bonusScore + redZhongBonus
+    
+    // 9. 赢家得分，其他三家各扣 total
+    scores[winner] = total * 3
+    for (let i = 0; i < 4; i++) {
+      if (i !== winner) scores[i] = -total
+    }
+
+    return {
+      scores,
+      drawCount: 1,
+      drawnTiles,
+      hitCount: drawnTiles.length,
+      winnerTotal: total * 3,
+      redZhongCount,
+      huType,
+      scoreMultiplier: multiplier,
+      baseScore,
+      bonusScore,
+      redZhongBonus,
+    }
   }
 
   function selectOpponentDiscard(hand: Tile[], _visibleTiles: Tile[] = [], melds: Meld[] = []): Tile {
@@ -1023,10 +1439,12 @@ export const useGameStore = defineStore('game', () => {
     totalRounds, currentRoundNumber, playerScore, roundHistory,
     winStreak, lastWinner,
     opponentWinHand, opponentPendingPong, opponentPendingGang,
+    gameMode,
     waiting, probability, pongResult, gangResult,
     canDraw, canDiscard, canPong, canGang,
     shantenResult, effectiveDrawResult, discardRecommendation,
     startGame, draw, discard, pong, rejectPong, gang, rejectGang, win, rejectWin, reset,
+    redZhongGang,
     setAIDifficulty, setTotalRounds, confirmRoundEnd,
   }
 })

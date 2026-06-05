@@ -26,7 +26,7 @@
               </span>
               <div class="meld-tiles-row">
                 <TileView
-                  v-for="j in (meld.type === 'concealed_gang' ? 4 : 3)"
+                  v-for="j in getMeldTileCount(meld.type)"
                   :key="j"
                   :tile="meld.tile"
                   mini
@@ -68,23 +68,47 @@
               <span v-if="isBonusTile(tile)" class="hit-badge">+10</span>
             </div>
           </div>
+          <!-- 胡牌类型（红中杠麻专用） -->
+          <div v-if="scoringInfo?.huTypeName" class="hu-type-badge">
+            {{ scoringInfo.huTypeName }}
+            <span v-if="scoringInfo.scoreMultiplier && scoringInfo.scoreMultiplier > 1" class="multiplier">×{{ scoringInfo.scoreMultiplier }}</span>
+          </div>
+
           <!-- 得分总计 -->
           <div class="score-summary">
-            <div class="score-line">
-              <span class="score-label">底分</span>
-              <span class="score-val">10</span>
-            </div>
-            <div v-if="scoringInfo.hitCount > 0" class="score-line">
-              <span class="score-label">命中 {{ scoringInfo.hitCount }} 马</span>
-              <span class="score-val hit">+{{ scoringInfo.hitCount * 10 }}</span>
-            </div>
+            <!-- 红中杠麻计分 -->
+            <template v-if="scoringInfo?.baseScore !== undefined">
+              <div class="score-line">
+                <span class="score-label">底分</span>
+                <span class="score-val">{{ scoringInfo.baseScore }}</span>
+              </div>
+              <div class="score-line">
+                <span class="score-label">抓马得分</span>
+                <span class="score-val hit">+{{ scoringInfo.bonusScore }}</span>
+              </div>
+              <div v-if="scoringInfo.redZhongBonus && scoringInfo.redZhongBonus > 0" class="score-line">
+                <span class="score-label">红中加成 ({{ scoringInfo.redZhongCount }}个)</span>
+                <span class="score-val hit">+{{ scoringInfo.redZhongBonus }}</span>
+              </div>
+            </template>
+            <!-- 传统红中麻将计分 -->
+            <template v-else>
+              <div class="score-line">
+                <span class="score-label">底分</span>
+                <span class="score-val">10</span>
+              </div>
+              <div v-if="scoringInfo?.hitCount > 0" class="score-line">
+                <span class="score-label">命中 {{ scoringInfo.hitCount }} 马</span>
+                <span class="score-val hit">+{{ scoringInfo.hitCount * 10 }}</span>
+              </div>
+            </template>
             <div class="score-line total">
               <span class="score-label">单家扣分</span>
-              <span class="score-val">{{ 10 + scoringInfo.hitCount * 10 }}</span>
+              <span class="score-val">{{ scoringInfo ? Math.floor(scoringInfo.winnerTotal / 3) : 0 }}</span>
             </div>
             <div class="score-line total winner">
               <span class="score-label">赢家总得</span>
-              <span class="score-val big">+{{ scoringInfo.winnerTotal }}</span>
+              <span class="score-val big">+{{ scoringInfo?.winnerTotal || 0 }}</span>
             </div>
           </div>
         </div>
@@ -119,6 +143,14 @@ defineProps<{
     hasRedZhong: boolean
     winnerTotal: number
     streak: number
+    // 红中杠麻扩展字段
+    huType?: string
+    huTypeName?: string
+    redZhongCount?: number
+    scoreMultiplier?: number
+    baseScore?: number
+    bonusScore?: number
+    redZhongBonus?: number
   }
 }>()
 
@@ -127,7 +159,13 @@ defineEmits<{
 }>()
 
 function meldLabel(type: string): string {
-  return { pong: '碰', exposed_gang: '明杠', concealed_gang: '暗杠' }[type] || type
+  return { pong: '碰', exposed_gang: '明杠', concealed_gang: '暗杠', red_zhong_gang: '红中杠' }[type] || type
+}
+
+function getMeldTileCount(type: string): number {
+  if (type === 'red_zhong_gang') return 1
+  if (type === 'concealed_gang') return 4
+  return 3
 }
 
 function isBonusTile(tile: Tile): boolean {
@@ -318,6 +356,26 @@ function isBonusTile(tile: Tile): boolean {
   padding: 1px 5px;
   border-radius: 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* 胡牌类型徽章 */
+.hu-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: linear-gradient(135deg, rgba(247,201,72,0.2), rgba(255,94,94,0.1));
+  border: 1px solid rgba(247,201,72,0.3);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-accent);
+  margin-bottom: 10px;
+}
+
+.hu-type-badge .multiplier {
+  font-size: 16px;
+  color: var(--color-primary);
 }
 
 /* 得分汇总 */

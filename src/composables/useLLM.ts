@@ -5,7 +5,7 @@
 // ============================================================
 
 import { ref, computed } from 'vue'
-import type { LLMConfig, LLMPromptContext, LLMAnalysisResult, Tile } from '@/types'
+import type { LLMConfig, LLMPromptContext, LLMAnalysisResult, Tile, MeldType } from '@/types'
 import { formatTile } from '@/algorithms/deck'
 
 // 存储在 localStorage 的 key
@@ -21,6 +21,36 @@ const DEFAULT_CONFIG: LLMConfig = {
   temperature: 0.7,
   showReasoning: true,
   enabledTriggers: ['pong_decision', 'gang_decision', 'switch_decision', 'low_probability', 'manual'],
+}
+
+// 格式化 API 地址为标准的 OpenAI 兼容 completions 端点
+export function formatApiUrl(url: string): string {
+  let cleanUrl = url.trim()
+  if (!cleanUrl) return ''
+  
+  if (!/^https?:\/\//i.test(cleanUrl)) {
+    cleanUrl = 'https://' + cleanUrl
+  }
+  
+  cleanUrl = cleanUrl.replace(/\/+$/, '')
+  
+  if (cleanUrl.endsWith('/chat/completions')) {
+    return cleanUrl
+  }
+  
+  if (cleanUrl.endsWith('/v1')) {
+    return cleanUrl + '/chat/completions'
+  }
+  
+  if (!cleanUrl.includes('/chat/completions')) {
+    if (cleanUrl.includes('/v1')) {
+      cleanUrl = cleanUrl + '/chat/completions'
+    } else {
+      cleanUrl = cleanUrl + '/v1/chat/completions'
+    }
+  }
+  
+  return cleanUrl
 }
 
 // 加载保存的配置
@@ -81,7 +111,7 @@ function buildPrompt(ctx: LLMPromptContext): string {
   let meldsInfo = ''
   if (ctx.melds.length > 0) {
     meldsInfo = '你的副露：' + ctx.melds.map(m => {
-      const typeMap = { pong: '碰', exposed_gang: '明杠', concealed_gang: '暗杠' }
+      const typeMap: Record<MeldType, string> = { pong: '碰', exposed_gang: '明杠', concealed_gang: '暗杠', red_zhong_gang: '红中杠' }
       return `${typeMap[m.type]}${formatTile(m.tile)}`
     }).join('、')
   }
@@ -94,7 +124,8 @@ function buildPrompt(ctx: LLMPromptContext): string {
 期望自摸巡数：${prob.expectedDraws === Infinity ? '—' : prob.expectedDraws.toFixed(1) + '巡'}`
   }
 
-  return `【红中麻将概率训练 - AI 辅助分析】
+  const modeLabel = ctx.gameMode === 'hongzhong_gang' ? '红中杠麻模式' : '传统红中麻将'
+  return `【${modeLabel} - AI 辅助分析】
 触发时机：${trigger}
 ${triggerDetail}
 第 ${ctx.round} 巡 | 牌堆剩余：${deck} 张
@@ -131,6 +162,9 @@ export function useLLM() {
 
   // 保存配置
   function updateConfig(updates: Partial<LLMConfig>) {
+    if (updates.apiUrl !== undefined) {
+      updates.apiUrl = formatApiUrl(updates.apiUrl)
+    }
     config.value = { ...config.value, ...updates }
     saveConfig(config.value)
   }
@@ -148,10 +182,24 @@ export function useLLM() {
     try {
       const prompt = buildPrompt(ctx)
 
+      const isHongZhongGang = ctx.gameMode === 'hongzhong_gang'
+      const rulesPrompt = isHongZhongGang
+        ? `【特别规则】当前对局是“红中杠麻”玩法！
+- 红中【绝不能】当成万能赖子牌来凑顺子或刻子，也不参与任何胡牌组合。
+- 手牌里有红中时绝对不能直接胡牌，必须打出红中进行“红中单杠”操作并补摸一张牌。
+- 胡牌只能自摸。番型倍率：大单调（单调一对）为 3 倍，四红中、暗杠杠开、对对胡为 2 倍，普通胡牌 1 倍。
+- 抓马采用“一码全中”，即抓 1 张马牌，若为 1 点则为 100 分，为 2 点为 20 分，为 3 点为 30 分，其余为 N*10 分。马牌得分会乘以胡牌倍率。
+- 非四红中胡牌时，每张红中额外加 10 分。`
+        : `【特别规则】当前对局是常规“红中麻将”玩法！
+- 红中是万能赖子牌，可以代替任何牌来组成顺子、刻子或将牌。
+- 胡牌只能自摸。`
+
       const messages = [
         {
           role: 'system' as const,
           content: `你是红中麻将的概率分析专家，红中麻将总共条、筒、万、各九种牌型，每种4张，红中4张，共112张，其中红中是万能牌，可以代替任何牌，只能碰牌和杠牌，不能吃牌，胡牌只能自摸胡牌。帮助用户做出最优决策。
+${rulesPrompt}
+
 你的分析应该：
 - 简洁专业，直接给出建议，中文回答，300字以内
 - 结合概率数据和麻将经验
@@ -170,7 +218,7 @@ export function useLLM() {
       };
       console.log('🚀 [useLLM] 发送给 AI 的完整请求体:', requestPayload);
 
-      const response = await fetch(config.value.apiUrl, {
+      const response = await fetch(formatApiUrl(config.value.apiUrl), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -183,10 +231,31 @@ export function useLLM() {
       console.log('🎯 [useLLM] AI 完整返回结果:', data);
       if (response.ok) {
         const msg = data.choices?.[0]?.message || {}
-        const reasoning = (config.value.showReasoning && msg.reasoning_content) 
-          ? `**【AI 思考过程】**\n_${msg.reasoning_content}_\n\n` 
-          : ''
-        const text = msg.content || ''
+        let reasoning = ''
+        let text = msg.content || ''
+        
+        // 优先获取官方接口的 reasoning_content
+        let tempReasoning = msg.reasoning_content || ''
+        
+        // 兼容第三方中转，从正文中分离出 <think> ... </think> 标签内容
+        if (!tempReasoning && /<think>([\s\S]*?)<\/think>/i.test(text)) {
+          const match = text.match(/<think>([\s\S]*?)<\/think>/i)
+          if (match) {
+            tempReasoning = match[1]
+          }
+        }
+        
+        // 依据用户设置的 showReasoning 状态进行格式化或过滤剔除
+        if (config.value.showReasoning) {
+          if (tempReasoning) {
+            reasoning = `**【AI 思考过程】**\n_${tempReasoning.trim()}_\n\n`
+          }
+          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+        } else {
+          reasoning = ''
+          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+        }
+        
         const finalContent = (reasoning + text).trim()
         result.value = {
           success: true,

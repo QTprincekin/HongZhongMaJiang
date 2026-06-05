@@ -145,6 +145,34 @@
 - **API配置**：用户提供 API 地址 + API Key，纯本地调用，不外传数据
 - **模型兼容**：支持 OpenAI 兼容接口（OpenAI / Claude / 国产模型均可）
 
+#### F10：红中杠麻模式（特殊规则） ⭐新增
+- **触发机制**：
+  - 玩家起手或摸到红中时，不计入常规听牌和进张分析，而是提示可进行“红中杠牌”操作。
+  - 玩家点击红中后将其打出，形成特殊的 `red_zhong_gang` 副露。
+  - 杠牌后，玩家从牌堆末尾补摸 1 张牌。
+- **胡牌规则**：
+  - 摸到红中无法直接作为常规自摸胡牌（因为红中在这个模式下是杠牌赖子）。
+  - 若补摸到胡牌所需的进张牌，则可以宣告自摸胡牌。
+
+#### F11：红中杠麻特殊计分 ⭐新增
+- **基础分**：每局胡牌基础底分为 10 分。
+- **特殊番种与倍率**：
+  - 四红中胡牌（自摸或杠牌时，手牌+副露中共有 4 张红中）：2 倍。
+  - 暗杠杠开（暗杠补摸后胡牌）：2 倍。
+  - 对对胡（除一对将牌外，全是刻子或杠子）：2 倍。
+  - 大单调（手牌除副露外仅剩 1 张，即单调一对胡牌）：3 倍。
+  - 普通胡牌：1 倍。
+- **一码全中抓马规则**：
+  - 胡牌后仅抓 1 张马牌。
+  - 得分规则：若马牌为 1 点则为 100 分；为 2 点为 20 分；为 3 点为 30 分；其余点数为 N * 10 分。
+  - 马牌的分数同样会乘以胡牌倍率。
+- **红中加成**：
+  - 如果不是四红中胡牌，结算时每有一张红中（无论在手牌还是副露中），均可额外加成 10 分。
+  - 如果是四红中胡牌，则红中点数不重复计入加成。
+- **计分公式**：
+  - $\text{单人应扣得分} = (\text{基础分 (10)} + \text{抓马得分}) \times \text{胡牌倍率} + \text{红中加成得分}$
+  - 赢家最终得分 = 三个对手扣除的得分总和。
+
 ---
 
 ## 三、数据结构设计
@@ -190,7 +218,7 @@ interface DeckState {
 ```typescript
 // 实际代码
 interface Meld {
-  type: 'pong' | 'exposed_gang' | 'concealed_gang'
+  type: 'pong' | 'exposed_gang' | 'concealed_gang' | 'red_zhong_gang'
   tile: Tile       // 涉及的牌（如 333万）
   drawnAfter?: Tile // 杠后补摸的牌
   fromOpponent?: boolean // 是否从对手处碰/杠来的（碰/点杠）
@@ -253,6 +281,30 @@ interface LLMPromptContext {
   decisionOptions: DecisionOption[];
   round: number;
   playerAction?: Tile;  // 触发时的动作（如：对方打了某张牌）
+}
+```
+
+### 3.6 游戏模式与特殊胡牌类型（红中杠麻专用） ⭐新增
+
+```typescript
+// 游戏模式
+export type GameMode = 'hongzhong' | 'hongzhong_gang'
+
+// 特殊胡牌类型
+export type HuType = 
+  | 'normal'            // 普通胡牌
+  | 'four_red_zhong'     // 四红中胡牌
+  | 'concealed_gang_win' // 暗杠杠开
+  | 'all_triplet'        // 对对胡
+  | 'single_pair'        // 大单调 (单调一对)
+
+// 结算时各胡牌类型的番数倍率
+export const HU_TYPE_MULTIPLIER: Record<HuType, number> = {
+  normal: 1,
+  four_red_zhong: 2,
+  concealed_gang_win: 2,
+  all_triplet: 2,
+  single_pair: 3,
 }
 ```
 

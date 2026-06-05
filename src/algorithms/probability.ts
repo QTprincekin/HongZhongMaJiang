@@ -88,10 +88,24 @@ export function calcProbability(
       t => t.suit === tile.suit && t.number === tile.number
     ).length
     
-    // 自己副露中的（碰/杠）
-    const inMyMelds = playerMelds.filter(
-      m => m.tile.suit === tile.suit && m.tile.number === tile.number
-    ).length * (playerMelds.find(m => m.tile.suit === tile.suit && m.tile.number === tile.number)?.type === 'concealed_gang' ? 4 : 3)
+    // 自己副露中的（碰/杠/红中杠）
+    let inMyMelds = 0
+    for (const m of playerMelds) {
+      if (m.tile.suit === tile.suit && m.tile.number === tile.number) {
+        // 红中杠只放一张
+        if (m.type === 'red_zhong_gang') {
+          inMyMelds += 1
+        }
+        // 暗杠四张
+        else if (m.type === 'concealed_gang') {
+          inMyMelds += 4
+        }
+        // 碰和明杠三张
+        else {
+          inMyMelds += 3
+        }
+      }
+    }
     
     // 剩余可摸数量
     const count = Math.max(0, total - playedCount - inMyHand - inMyMelds)

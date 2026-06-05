@@ -1,4 +1,11 @@
 <template>
+  <!-- 游戏模式选择视图 -->
+  <GameModeSelector
+    v-if="currentView === 'mode-select'"
+    @start="onModeSelect"
+    @openSettings="showSettings = true"
+  />
+
   <div v-show="currentView === 'game'" class="app">
     <!-- 顶部导航 -->
     <header class="app-header">
@@ -86,7 +93,7 @@
               <span class="meld-tag" :class="meld.type">{{ meldTypeLabel(meld.type) }}</span>
               <div class="meld-tiles">
                 <TileView
-                  v-for="j in (meld.type === 'concealed_gang' ? 4 : 3)"
+                  v-for="j in getMeldTileCount(meld.type)"
                   :key="j"
                   :tile="meld.tile"
                   mini
@@ -375,6 +382,8 @@
           :deck-remaining="game.deck.remainingCount"
           :melds="game.playerMelds"
           :round="game.round"
+          :game-mode="game.gameMode"
+          :visible-tiles="game.deck.visibleTiles"
         />
 
         <div class="history-section">
@@ -437,16 +446,19 @@ import AIChatPanel from '@/components/AIChatPanel.vue'
 import GameSetupPanel from '@/components/GameSetupPanel.vue'
 import ScorePanel from '@/components/ScorePanel.vue'
 import OpponentWinModal from '@/components/OpponentWinModal.vue'
+import GameModeSelector from '@/components/GameModeSelector.vue'
 import { useLLM } from '@/composables/useLLM'
 import { useSimulator } from '@/composables/useSimulator'
 import TutorialView from '@/components/tutorial/TutorialView.vue'
-import type { Tile, LLMPromptContext, AIDifficulty, Meld } from '@/types'
+import type { Tile, LLMPromptContext, Meld, HuType, GameMode } from '@/types'
+import { AIDifficulty } from '@/types'
+import { HU_TYPE_LABELS } from '@/types'
 
 const game = useGameStore()
 const llm = useLLM()
 const sim = useSimulator()
 
-const currentView = ref<'game' | 'tutorial'>('game')
+const currentView = ref<'mode-select' | 'game' | 'tutorial'>('mode-select')
 const showSettings = ref(false)
 const copySuccess = ref(false)
 
@@ -514,13 +526,26 @@ async function copyHand() {
 
 function selectTile(tile: any) {
   if (game.gamePhase !== 'my_discard') return
+  
+  // 红中杠麻模式：点击红中直接杠牌
+  if (game.gameMode === 'hongzhong_gang' && tile.suit === 'red_zhong') {
+    game.redZhongGang(tile)
+    return
+  }
+  
   game.selectedTile = game.selectedTile?.id === tile.id ? null : tile
 }
 
 function formatTile(tile: any): string { return _formatTile(tile) }
 
 function meldTypeLabel(type: string): string {
-  return { pong: '碰', exposed_gang: '明杠', concealed_gang: '暗杠' }[type] || type
+  return { pong: '碰', exposed_gang: '明杠', concealed_gang: '暗杠', red_zhong_gang: '红中杠' }[type] || type
+}
+
+function getMeldTileCount(type: string): number {
+  if (type === 'red_zhong_gang') return 1
+  if (type === 'concealed_gang') return 4
+  return 3
 }
 
 function actionLabel(type: string): string {
@@ -558,6 +583,7 @@ function openAIModal(trigger: LLMPromptContext['trigger']) {
     pendingGang: game.pendingGangTile,
     melds: game.playerMelds,
     round: game.round,
+    gameMode: game.gameMode,
   }
   showAIModal.value = true
 }
@@ -569,13 +595,30 @@ async function runSimulator() {
 }
 
 const llmConfig = ref({ ...llm.config.value })
-function saveLLMConfig() { llm.updateConfig(llmConfig.value) }
+function saveLLMConfig() {
+  llm.updateConfig(llmConfig.value)
+  llmConfig.value = { ...llm.config.value }
+}
+
+// 当前选中的游戏模式
+const selectedGameMode = ref<GameMode | null>(null)
+
+// 模式选择
+function onModeSelect(mode: GameMode) {
+  selectedGameMode.value = mode
+  currentView.value = 'game'
+  game.reset()
+  // 设置游戏模式
+  game.startGame(mode)
+}
 
 // 开局设置
 function onGameStart(difficulty: AIDifficulty, rounds: number) {
   game.setAIDifficulty(difficulty)
   game.setTotalRounds(rounds)
-  game.startGame()
+  if (selectedGameMode.value) {
+    game.startGame(selectedGameMode.value)
+  }
 }
 
 // 对手胡牌亮牌弹窗辅助
@@ -594,12 +637,27 @@ function getOpponentWinMelds(): Meld[] {
 }
 
 function getScoringInfo() {
-  if (game.totalRounds === 0) return undefined
   const history = game.roundHistory
   if (history.length === 0) return undefined
   const last = history[history.length - 1]
   if (!last.bonusDrawTiles || last.bonusDrawTiles.length === 0) return undefined
-  return {
+  
+  const result: {
+    bonusDrawCount: number
+    bonusDrawTiles: any[]
+    hitCount: number
+    hasRedZhong: boolean
+    winnerTotal: number
+    streak: number
+    // 红中杠麻扩展字段
+    huType?: HuType
+    huTypeName?: string
+    redZhongCount?: number
+    scoreMultiplier?: number
+    baseScore?: number
+    bonusScore?: number
+    redZhongBonus?: number
+  } = {
     bonusDrawCount: last.bonusDrawCount || 0,
     bonusDrawTiles: last.bonusDrawTiles || [],
     hitCount: last.bonusHitCount || 0,
@@ -607,6 +665,19 @@ function getScoringInfo() {
     winnerTotal: last.winnerScore || 0,
     streak: game.winStreak,
   }
+  
+  // 红中杠麻扩展信息
+  if (last.huType) {
+    result.huType = last.huType
+    result.huTypeName = HU_TYPE_LABELS[last.huType]
+    result.redZhongCount = last.redZhongCount
+    result.scoreMultiplier = last.scoreMultiplier
+    result.baseScore = last.baseScore
+    result.bonusScore = last.bonusScore
+    result.redZhongBonus = last.redZhongBonus
+  }
+  
+  return result
 }
 
 function onWinModalClose() {

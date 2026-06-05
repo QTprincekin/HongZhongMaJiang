@@ -2,8 +2,11 @@
   <div class="setup-panel">
     <div class="setup-header">
       <span class="setup-icon">🀄</span>
-      <h2 class="setup-title">红中麻将</h2>
+      <h2 class="setup-title">{{ gameModeTitle }}</h2>
       <p class="setup-subtitle">概率训练系统</p>
+      <div v-if="gameMode === 'hongzhong_gang'" class="mode-badge">
+        ⚡ 红中杠麻模式
+      </div>
     </div>
 
     <!-- AI 难度 -->
@@ -69,20 +72,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
   AIDifficulty, AI_DIFFICULTY_CONFIG,
-  ROUND_OPTIONS,
+  ROUND_OPTIONS, GAME_MODE_LABELS,
 } from '@/types'
-import type { RoundSetting } from '@/types'
+import type { RoundSetting, GameMode } from '@/types'
+import { useGameStore } from '@/stores/gameStore'
 
 const emit = defineEmits<{
   start: [difficulty: AIDifficulty, rounds: number]
 }>()
 
+const game = useGameStore()
+
 const selectedDifficulty = ref<AIDifficulty>(AIDifficulty.NOVICE)
 const selectedRoundOption = ref<RoundSetting>(0)
 const customRounds = ref(10)
+
+const gameMode = computed<GameMode>(() => game.gameMode)
+
+const gameModeTitle = computed(() => GAME_MODE_LABELS[gameMode.value])
 
 function difficultyDesc(key: string): string {
   const map: Record<string, string> = {
@@ -141,6 +151,18 @@ function handleStart() {
   font-size: 13px;
   color: var(--color-text-muted);
   margin: 4px 0 0;
+}
+
+.mode-badge {
+  display: inline-block;
+  margin-top: 8px;
+  padding: 4px 12px;
+  background: linear-gradient(135deg, rgba(247,201,72,0.2), rgba(247,201,72,0.1));
+  border: 1px solid rgba(247,201,72,0.3);
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-accent);
 }
 
 /* 区块 */

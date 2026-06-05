@@ -25,8 +25,8 @@ export interface Tile {
   id: string            // 唯一标识，如 "dot_3_0"（dot_花色_数字_序号）
 }
 
-// 副露类型：碰 / 明杠 / 暗杠
-export type MeldType = 'pong' | 'exposed_gang' | 'concealed_gang'
+// 副露类型：碰 / 明杠 / 暗杠 / 红中单杠
+export type MeldType = 'pong' | 'exposed_gang' | 'concealed_gang' | 'red_zhong_gang'
 
 // 副露（碰/杠）
 export interface Meld {
@@ -34,6 +34,36 @@ export interface Meld {
   tile: Tile       // 涉及的牌（如 333万）
   drawnAfter?: Tile // 杠后补摸的牌
   fromOpponent?: boolean // 是否从对手处碰/杠来的（碰/点杠）
+}
+
+// ============================================================
+// 游戏模式类型
+// ============================================================
+
+export type GameMode = 'hongzhong' | 'hongzhong_gang'
+
+export const GAME_MODE_LABELS: Record<GameMode, string> = {
+  hongzhong: '红中麻将',
+  hongzhong_gang: '红中杠麻',
+}
+
+// ============================================================
+// 特殊胡牌类型（红中杠麻专用）
+// ============================================================
+
+export type HuType = 
+  | 'normal'        // 普通胡牌
+  | 'four_red_zhong' // 四红中胡牌
+  | 'concealed_gang_win' // 暗杠杠开
+  | 'all_triplet'   // 对对胡（全刻子）
+  | 'single_pair'   // 大单调（单调一对）
+
+export const HU_TYPE_LABELS: Record<HuType, string> = {
+  normal: '普通胡牌',
+  four_red_zhong: '四红中胡牌',
+  concealed_gang_win: '暗杠杠开',
+  all_triplet: '对对胡',
+  single_pair: '大单调',
 }
 
 // 牌堆状态
@@ -166,6 +196,7 @@ export interface LLMPromptContext {
   pendingGang?: Tile
   melds: Meld[]
   round: number
+  gameMode?: GameMode
 }
 
 // LLM 分析结果
@@ -245,6 +276,25 @@ export interface DiscardRecommendation {
 // 计分系统 - 类型定义
 // ============================================================
 
+// 胡牌倍率配置（红中杠麻专用）
+export const HU_TYPE_MULTIPLIER: Record<HuType, number> = {
+  normal: 1,
+  four_red_zhong: 2,
+  concealed_gang_win: 2,
+  all_triplet: 2,
+  single_pair: 3,
+}
+
+// 抓马得分规则（红中杠麻专用）
+export function getBonusScore(drawNumber: number): number {
+  switch (drawNumber) {
+    case 1: return 100
+    case 2: return 20
+    case 3: return 30
+    default: return drawNumber * 10
+  }
+}
+
 // 一局结果
 
 export interface RoundResult {
@@ -259,6 +309,13 @@ export interface RoundResult {
   bonusHitCount?: number       // 命中目标牌数
   hasRedZhong?: boolean        // 胡牌时手中是否有红中
   winnerScore?: number         // 赢家最终得分
+  // 红中杠麻扩展字段
+  huType?: HuType              // 胡牌类型
+  redZhongCount?: number       // 胡牌时红中数量
+  scoreMultiplier?: number     // 得分倍率
+  baseScore?: number           // 基础得分
+  bonusScore?: number          // 抓马得分
+  redZhongBonus?: number       // 红中加成得分
 }
 
 // 圈数设置

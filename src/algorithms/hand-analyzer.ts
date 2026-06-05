@@ -31,11 +31,13 @@ function cloneMap(m: Map<string, number>): Map<string, number> {
  * 检查是否胡牌（穷举所有可能的对子作为将牌）
  */
 export function checkWin(tiles: Tile[], melds: Meld[] = []): boolean {
-  const effectiveCount = tiles.length + melds.length * 3
+  // 过滤掉红中单杠副露（红中单杠是独立的杠牌动作，不占用常规 4 面子之一，也不贡献 3 张牌常规长度）
+  const normalMelds = melds.filter(m => m.type !== 'red_zhong_gang')
+  const effectiveCount = tiles.length + normalMelds.length * 3
   if (effectiveCount !== 14) return false
 
   // 已完成的副露组数
-  const completedMelds = melds.length
+  const completedMelds = normalMelds.length
 
   // 14张 = 4个面子 + 1个对子
   // 移除对子后，剩余12张需要组成 4 - completedMelds 个面子
@@ -86,8 +88,9 @@ function isSevenPairs(tiles: Tile[], melds: Meld[]): boolean {
   counts.delete('_RZ_')
 
   let pairs = 0
-  // 副露中有刻子的也算一对
-  for (const m of melds) {
+  // 副露中有刻子的也算一对，需排除红中单杠
+  const normalMelds = melds.filter(m => m.type !== 'red_zhong_gang')
+  for (const m of normalMelds) {
     if (m.type === 'pong' || m.type === 'exposed_gang' || m.type === 'concealed_gang') {
       pairs += 1
     }
@@ -203,7 +206,9 @@ function canFormNMeldPairs(counts: Map<string, number>, rz: number, meldsLeft: n
  * @param melds 副露（可选）
  */
 export function analyzeWaiting(hand: Tile[], melds: Meld[] = []): WaitingAnalysis {
-  const effectiveCount = hand.length + melds.length * 3
+  // 过滤掉红中单杠副露
+  const normalMelds = melds.filter(m => m.type !== 'red_zhong_gang')
+  const effectiveCount = hand.length + normalMelds.length * 3
 
   // 14张已胡牌
   if (effectiveCount === 14) {

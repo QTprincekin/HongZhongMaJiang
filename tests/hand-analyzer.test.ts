@@ -113,4 +113,46 @@ describe('胡牌检测', () => {
     expect(result.isReady).toBe(true)
     expect(result.waitingCount).toBeGreaterThan(0)
   })
+
+  it('测试红中单杠副露在红中杠麻模式下的胡牌检测', () => {
+    // 手牌 11 张，已有 1 个碰副露（碰3万），另外有 1 个红中杠副露（红中单杠）
+    // 常规手牌 11 张 + 常规副露 3 张 = 14 张
+    const hand = [
+      { suit: 'bamboo', number: 1, id: '1' },
+      { suit: 'bamboo', number: 1, id: '2' },
+      { suit: 'bamboo', number: 1, id: '3' },
+      { suit: 'bamboo', number: 2, id: '4' },
+      { suit: 'bamboo', number: 2, id: '5' },
+      { suit: 'bamboo', number: 2, id: '6' },
+      { suit: 'bamboo', number: 3, id: '7' },
+      { suit: 'bamboo', number: 3, id: '8' },
+      { suit: 'bamboo', number: 3, id: '9' },
+      { suit: 'bamboo', number: 4, id: '10' },
+      { suit: 'bamboo', number: 4, id: '11' }, // 将牌
+    ]
+    const melds = [
+      { type: 'pong', tile: { suit: 'char', number: 3, id: 'm1' }, fromOpponent: true },
+      { type: 'red_zhong_gang', tile: { suit: 'red_zhong', number: null, id: 'm2' }, fromOpponent: false },
+    ]
+    // 应当判定为可以胡牌（11张手牌加上碰3万的副露，忽略红中单杠）
+    const won = checkWin(hand, melds as any)
+    expect(won).toBe(true)
+    
+    // 如果是 10 张手牌，碰3万，红中杠，应当判定为听牌（等 4 条）
+    const hand10 = [
+      { suit: 'bamboo', number: 1, id: '1' },
+      { suit: 'bamboo', number: 1, id: '2' },
+      { suit: 'bamboo', number: 1, id: '3' },
+      { suit: 'bamboo', number: 2, id: '4' },
+      { suit: 'bamboo', number: 2, id: '5' },
+      { suit: 'bamboo', number: 2, id: '6' },
+      { suit: 'bamboo', number: 3, id: '7' },
+      { suit: 'bamboo', number: 3, id: '8' },
+      { suit: 'bamboo', number: 3, id: '9' },
+      { suit: 'bamboo', number: 4, id: '10' }, // 缺一张4条做将
+    ]
+    const ready = analyzeWaiting(hand10, melds as any)
+    expect(ready.isReady).toBe(true)
+    expect(ready.waitingTiles.some(t => t.suit === 'bamboo' && t.number === 4)).toBe(true)
+  })
 })

@@ -76,6 +76,10 @@ function canWin(hand: Tile[]): boolean {
 }
 ```
 
+> [!IMPORTANT]
+> **红中杠麻自摸限制**：
+> 在红中杠麻（`hongzhong_gang`）模式下，摸到红中无法直接作为常规自摸胡牌。即使手牌通过红中替代可以满足胡牌型，如果手牌中持有红中，`checkSelfWin` 也会判定为 `false`，要求玩家必须先执行“红中单杠”打出红中并补摸。
+
 ### 2.2 听牌分析
 
 ```typescript
@@ -83,6 +87,7 @@ function analyzeWaiting(hand: Tile[]): WaitingResult {
   // 1. 对每种未完成的牌型，枚举补全所需的牌
   // 2. 过滤牌堆中存在的牌
   // 3. 去重返回等待列表
+  // 4. 红中杠麻模式特殊处理：红中不作为听牌进张，此处会过滤掉红中（TileSuit.RED_ZHONG）。
 }
 ```
 
@@ -466,4 +471,130 @@ posteriorProb: evidence > 0
 
 ---
 
+## 十一、红中杠麻玩法核心算法（gameStore.ts） ⭐新增
+
+红中杠麻（`hongzhong_gang`）是一种特殊的红中麻将玩法，该玩法将红中从普通的“万能牌/听牌赖子”变更为“强制杠牌牌型”。同时在计分、胡牌判定、抓马规则上与普通红中麻将有着明显差异。
+
+### 11.1 特殊胡牌判定算法
+
+系统通过以下辅助函数来进行红中杠麻特殊的胡牌番型判定：
+
+#### 11.1.1 四红中胡牌检测
+四红中是红中杠麻的最高番种。当玩家或对手的手牌及副露中，红中总张数 $\ge 4$ 时，即可直接宣布胡牌。
+```typescript
+function checkFourRedZhongWin(): boolean {
+  const redZhongCount = countTiles(playerHand.value, TileSuit.RED_ZHONG, null)
+  return redZhongCount >= 4
+}
+```
+
+#### 11.1.2 对对胡检测（全刻子判定）
+对对胡要求除了将牌是一对之外，其余的所有组合（包括手牌中的暗刻和副露中的碰、杠面子）必须全部是刻子或杠子，不允许有顺子。
+```typescript
+function isAllTriplet(hand: Tile[], melds: Meld[]): boolean {
+  const allTiles = [...hand]
+  // 将副露拼回牌数组进行计数（碰算3张，杠算3或4张）
+  melds.forEach(m => {
+    const count = m.type === 'pong' ? 3 : 4
+    for (let i = 0; i < count; i++) {
+      allTiles.push({ ...m.tile, id: `${m.tile.id}_${i}` })
+    }
+  })
+  
+  // 统计每张牌的个数（不计红中）
+  const counts = new Map<string, number>()
+  for (const t of allTiles) {
+    if (t.suit === TileSuit.RED_ZHONG) continue
+    const key = `${t.suit}_${t.number}`
+    counts.set(key, (counts.get(key) || 0) + 1)
+  }
+  
+  // 所有花色牌在手牌和副露里的张数必须是对子(2)或刻/杠子(3/4)
+  for (const [, count] of counts) {
+    if (count !== 2 && count !== 3 && count !== 4) {
+      return false
+    }
+  }
+  return true
+}
+```
+
+#### 11.1.3 大单调检测（单吊判定）
+大单调是指玩家只剩下一张手牌，单吊这一张牌凑成对子胡牌。
+*   判定条件：当前手牌经碰、杠等副露后，扣除副露，手牌张数仅剩下 1 张。此时若有人打出或自己摸到对应的将牌，即构成大单调听牌。
+```typescript
+function isSinglePair(hand: Tile[], melds: Meld[]): boolean {
+  const result = analyzeWaiting(hand, melds)
+  if (!result.isReady) return false
+  
+  const waitingTiles = result.waitingTiles
+  // 听牌只剩 1 种
+  if (waitingTiles.length !== 1) return false
+  
+  const waitingTile = waitingTiles[0]
+  // 手牌里已有的同款牌张数必须为 1（与新来的一张正好凑成一对将牌）
+  const count = countTiles(hand, waitingTile.suit, waitingTile.number)
+  return count === 1
+}
+```
+
+### 11.2 特殊计分与抓马算法
+
+#### 11.2.1 一码全中抓马规则
+红中杠麻采用“一码全中”的抓马方式。胡牌时，从剩余牌堆顶部只摸 1 张牌作为马牌：
+1. 若马牌点数为 **1 点**，则奖励 **100 分**（基础加成）。
+2. 若马牌点数为 **2 点**，则奖励 **20 分**。
+3. 若马牌点数为 **3 点**，则奖励 **30 分**。
+4. 其余点数均奖励 **$N \times 10$ 分**（$N$ 为马牌点数）。
+```typescript
+function getBonusScore(drawNumber: number): number {
+  switch (drawNumber) {
+    case 1: return 100
+    case 2: return 20
+    case 3: return 30
+    default: return drawNumber * 10
+  }
+}
+```
+
+#### 11.2.2 计分公式与结算
+在红中杠麻中，计分考虑基础分、马分、番种倍率以及红中数量：
+*   **胡牌总倍率（番数乘积）** $M$：依据 `detectHuType` 返回的胡牌类型获得倍率：
+    *   大单调：3 倍
+    *   四红中 / 暗杠杠开 / 对对胡：2 倍
+    *   普通胡牌：1 倍
+*   **总分计算**：
+    $$\text{单人得分} = (\text{基础分 (10)} + \text{抓马得分}) \times M + \text{红中数量} \times 10$$
+    *(注：当判定为“四红中”胡牌番型时，由于番型本身已翻倍，红中加成得分强制为 0，防止二次重复计分。)*
+
+```typescript
+function calcHongZhongGangScore(winner: number, hand: Tile[], melds: Meld[]) {
+  // 1. 基础底分 10
+  const baseScore = 10
+  
+  // 2. 统计红中数
+  const redZhongCount = countRedZhong(hand, melds)
+  
+  // 3. 胡牌类型与倍率
+  const huType = detectHuType(hand, melds, isConcealedGangWin)
+  let multiplier = HU_TYPE_MULTIPLIER[huType]
+  
+  // 4. 抓 1 个马牌并计算得分
+  let bonusScore = 0
+  if (drawnTiles.length > 0) {
+    bonusScore = getBonusScore(drawnTiles[0].number) * multiplier
+  }
+  
+  // 5. 红中加成（四红中胡牌除外）
+  const redZhongBonus = huType === 'four_red_zhong' ? 0 : redZhongCount * 10
+  
+  // 6. 得出单人总分，赢家从其他三家各收 total
+  const total = baseScore + bonusScore + redZhongBonus
+  ...
+}
+```
+
+---
+
 *本文档随代码更新。如有疑问，参考对应 .ts 源文件。*
+```
