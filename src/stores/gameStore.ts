@@ -199,6 +199,12 @@ export const useGameStore = defineStore('game', () => {
       opponents.value[i].lastDiscard = undefined
     }
     history.value = []
+    history.value.push({
+      type: 'starting_hand',
+      round: 0,
+      handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
+      meldsSnapshot: []
+    })
     round.value = 1
     currentRoundNumber.value = 1
     currentOpponent.value = null
@@ -240,7 +246,13 @@ export const useGameStore = defineStore('game', () => {
     playerHand.value.push(tile)
     playerHand.value.sort(sortTiles)
     hasDrawnThisTurn.value = true
-    history.value.push({ type: 'draw', tile, round: round.value })
+    history.value.push({
+      type: 'draw',
+      tile,
+      round: round.value,
+      handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
+      meldsSnapshot: JSON.parse(JSON.stringify(playerMelds.value))
+    })
 
     // 红中杠麻：检查是否四红中直接胡牌
     if (gameMode.value === 'hongzhong_gang') {
@@ -314,6 +326,8 @@ export const useGameStore = defineStore('game', () => {
     const idx = playerHand.value.findIndex(t => t.id === tile.id)
     if (idx < 0) { message.value = '找不到这张红中'; return }
     
+    const handBeforeRedZhongGang = JSON.parse(JSON.stringify(playerHand.value))
+    const meldsBeforeRedZhongGang = JSON.parse(JSON.stringify(playerMelds.value))
     playerHand.value.splice(idx, 1)
     playerRiver.value.push(tile)
     deck.value = addVisibleTile(deck.value, tile)
@@ -325,7 +339,14 @@ export const useGameStore = defineStore('game', () => {
       fromOpponent: false,
     })
     
-    history.value.push({ type: 'gang', tile, round: round.value, meld: playerMelds.value[playerMelds.value.length - 1] })
+    history.value.push({
+      type: 'gang',
+      tile,
+      round: round.value,
+      meld: playerMelds.value[playerMelds.value.length - 1],
+      handSnapshot: handBeforeRedZhongGang,
+      meldsSnapshot: meldsBeforeRedZhongGang
+    })
     
     // 杠后补摸一张
     if (deck.value.tiles.length === 0) {
@@ -362,7 +383,13 @@ export const useGameStore = defineStore('game', () => {
   function win() {
     if (gamePhase.value !== 'waiting_win') return
     const tile = playerHand.value[playerHand.value.length - 1]
-    history.value.push({ type: 'self_draw', tile, round: round.value })
+    history.value.push({
+      type: 'self_draw',
+      tile,
+      round: round.value,
+      handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
+      meldsSnapshot: JSON.parse(JSON.stringify(playerMelds.value))
+    })
     endRound(3, true, tile)
   }
 
@@ -378,10 +405,18 @@ export const useGameStore = defineStore('game', () => {
     if (gamePhase.value !== 'my_discard') { message.value = '请先摸牌'; return }
     const idx = playerHand.value.findIndex(t => t.id === tile.id)
     if (idx < 0) { message.value = '找不到这张牌'; return }
+    const handBeforeDiscard = JSON.parse(JSON.stringify(playerHand.value))
+    const meldsBeforeDiscard = JSON.parse(JSON.stringify(playerMelds.value))
     playerHand.value.splice(idx, 1)
     playerRiver.value.push(tile)
     deck.value = addVisibleTile(deck.value, tile)
-    history.value.push({ type: 'discard', tile, round: round.value })
+    history.value.push({
+      type: 'discard',
+      tile,
+      round: round.value,
+      handSnapshot: handBeforeDiscard,
+      meldsSnapshot: meldsBeforeDiscard
+    })
     selectedTile.value = undefined
     message.value = `打出 ${formatTile(tile)}`
     hasDrawnThisTurn.value = false
@@ -603,6 +638,8 @@ export const useGameStore = defineStore('game', () => {
     if (gamePhase.value !== 'waiting_pong' || !pendingPongTile.value) return
     const tile = pendingPongTile.value
     // 从手牌移除2张相同牌
+    const handBeforePong = JSON.parse(JSON.stringify(playerHand.value))
+    const meldsBeforePong = JSON.parse(JSON.stringify(playerMelds.value))
     let removed = 0
     playerHand.value = playerHand.value.filter(t => {
       if (removed < 2 && tilesEqual(t, tile)) { removed++; return false }
@@ -616,7 +653,14 @@ export const useGameStore = defineStore('game', () => {
       if (idx >= 0) opp.river.splice(idx, 1)
     }
     deck.value = addVisibleTile(deck.value, tile)
-    history.value.push({ type: 'pong', tile, round: round.value, meld: playerMelds.value[playerMelds.value.length - 1] })
+    history.value.push({
+      type: 'pong',
+      tile,
+      round: round.value,
+      meld: playerMelds.value[playerMelds.value.length - 1],
+      handSnapshot: handBeforePong,
+      meldsSnapshot: meldsBeforePong
+    })
     pendingPongTile.value = undefined
     pendingFrom.value = null
     hasDrawnThisTurn.value = false
@@ -661,6 +705,9 @@ export const useGameStore = defineStore('game', () => {
     const tile = pendingGangTile.value || findGangTile(playerHand.value)
     if (!tile) return
 
+    const handBeforeGang = JSON.parse(JSON.stringify(playerHand.value))
+    const meldsBeforeGang = JSON.parse(JSON.stringify(playerMelds.value))
+
     if (type === 'exposed') {
       // 明杠：手里3张 + 对手打出1张，从手牌移除3张
       playerHand.value = removeTiles(playerHand.value, tile.suit, tile.number, 3)
@@ -691,7 +738,14 @@ export const useGameStore = defineStore('game', () => {
       tile, drawnAfter: drawn, fromOpponent: type === 'exposed',
     })
     deck.value = addVisibleTile(deck.value, tile)
-    history.value.push({ type: 'gang', tile, round: round.value, meld: playerMelds.value[playerMelds.value.length - 1] })
+    history.value.push({
+      type: 'gang',
+      tile,
+      round: round.value,
+      meld: playerMelds.value[playerMelds.value.length - 1],
+      handSnapshot: handBeforeGang,
+      meldsSnapshot: meldsBeforeGang
+    })
     pendingGangTile.value = undefined
     pendingPongTile.value = undefined
     pendingFrom.value = null
@@ -1065,6 +1119,12 @@ export const useGameStore = defineStore('game', () => {
     }
     round.value = 1
     history.value = []
+    history.value.push({
+      type: 'starting_hand',
+      round: 0,
+      handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
+      meldsSnapshot: []
+    })
     opponentWinHand.value = null
     opponentPendingPong.value = null
     opponentPendingGang.value = null

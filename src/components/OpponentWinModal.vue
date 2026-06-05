@@ -113,10 +113,15 @@
           </div>
         </div>
 
-        <!-- 关闭按钮 -->
-        <button class="close-btn" @click="$emit('close')">
-          确认
-        </button>
+        <!-- 控制按钮组 -->
+        <div class="modal-actions-row">
+          <button class="close-btn replay-ai-btn" @click="$emit('request-god-view')">
+            🤖 AI 上帝复盘
+          </button>
+          <button class="close-btn" @click="$emit('close')">
+            确认
+          </button>
+        </div>
       </div>
     </div>
   </transition>
@@ -156,6 +161,7 @@ defineProps<{
 
 defineEmits<{
   close: []
+  'request-god-view': []
 }>()
 
 function meldLabel(type: string): string {
@@ -420,23 +426,61 @@ function isBonusTile(tile: Tile): boolean {
   color: var(--color-success);
 }
 
-/* 关闭按钮 */
+/* 控制按钮组 */
+.modal-actions-row {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+  margin-top: 8px;
+}
+
 .close-btn {
-  padding: 12px 32px;
-  font-size: 16px;
+  padding: 12px 28px;
+  font-size: 15px;
   font-weight: 700;
   border: none;
   border-radius: 10px;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-accent));
-  color: #fff;
+  background: var(--color-border-light);
+  color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   align-self: center;
 }
 
 .close-btn:hover {
+  background: var(--color-border);
+  color: var(--color-text);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(255, 94, 94, 0.4);
+}
+
+.replay-ai-btn {
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(139, 92, 246, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.replay-ai-btn:hover {
+  background: linear-gradient(135deg, #9b6bf7, #f45fa9);
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.5), 0 0 12px rgba(236, 72, 153, 0.3);
+}
+
+.replay-ai-btn::after {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: linear-gradient(to right, transparent, rgba(255,255,255,0.15), transparent);
+  transform: rotate(30deg);
+  animation: shine 3s infinite;
+}
+
+@keyframes shine {
+  0% { transform: translate(-30%, -30%) rotate(30deg); }
+  100% { transform: translate(130%, 130%) rotate(30deg); }
 }
 
 /* 过渡动画 */

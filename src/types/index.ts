@@ -365,7 +365,7 @@ export interface GameState {
   aiDifficulty: AIDifficulty
 }
 
-export type GameActionType = 'draw' | 'discard' | 'pong' | 'gang' | 'self_draw'
+export type GameActionType = 'draw' | 'discard' | 'pong' | 'gang' | 'self_draw' | 'starting_hand'
 
 export interface GameAction {
   type: GameActionType
@@ -373,6 +373,8 @@ export interface GameAction {
   fromOpponent?: number
   round: number
   meld?: Meld
+  handSnapshot?: Tile[]
+  meldsSnapshot?: Meld[]
 }
 
 // ============================================================

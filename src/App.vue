@@ -419,6 +419,16 @@
       :melds="getOpponentWinMelds()"
       :scoring-info="getScoringInfo()"
       @close="onWinModalClose"
+      @request-god-view="triggerGodView"
+    />
+
+    <!-- 上帝视角复盘弹窗 -->
+    <GodViewModal
+      v-if="showGodViewModal"
+      :visible="showGodViewModal"
+      :history="godViewHistory"
+      :game-mode="game.gameMode"
+      @close="showGodViewModal = false"
     />
 
   </div>
@@ -446,6 +456,7 @@ import AIChatPanel from '@/components/AIChatPanel.vue'
 import GameSetupPanel from '@/components/GameSetupPanel.vue'
 import ScorePanel from '@/components/ScorePanel.vue'
 import OpponentWinModal from '@/components/OpponentWinModal.vue'
+import GodViewModal from '@/components/GodViewModal.vue'
 import GameModeSelector from '@/components/GameModeSelector.vue'
 import { useLLM } from '@/composables/useLLM'
 import { useSimulator } from '@/composables/useSimulator'
@@ -465,6 +476,19 @@ const copySuccess = ref(false)
 // AI 弹窗状态
 const showAIModal = ref(false)
 const aiModalContext = ref<LLMPromptContext | null>(null)
+
+// 上帝视角复盘状态
+const showGodViewModal = ref(false)
+const godViewHistory = ref<any[]>([])
+
+function triggerGodView() {
+  // 深拷贝当前动作流水
+  godViewHistory.value = JSON.parse(JSON.stringify(game.history))
+  // 执行confirmRoundEnd结束本局，推向重开或下局摸牌
+  game.confirmRoundEnd()
+  // 弹出上帝视角复盘
+  showGodViewModal.value = true
+}
 
 const isPlayerTurn = computed(() =>
   ['my_draw', 'my_discard', 'waiting_pong', 'waiting_gang', 'waiting_win'].includes(game.gamePhase)

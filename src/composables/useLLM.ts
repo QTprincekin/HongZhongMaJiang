@@ -5,7 +5,7 @@
 // ============================================================
 
 import { ref, computed } from 'vue'
-import type { LLMConfig, LLMPromptContext, LLMAnalysisResult, Tile, MeldType } from '@/types'
+import type { LLMConfig, LLMPromptContext, LLMAnalysisResult, Tile, MeldType, Meld, GameAction } from '@/types'
 import { formatTile } from '@/algorithms/deck'
 
 // 存储在 localStorage 的 key
@@ -281,6 +281,102 @@ ${rulesPrompt}
     }
   }
 
+  // 上帝视角对局复盘分析
+  async function analyzeGodView(history: GameAction[], gameMode: string): Promise<LLMAnalysisResult> {
+    if (!isEnabled.value) {
+      return { success: false, error: 'LLM 未配置或未启用' }
+    }
+
+    loading.value = true
+    const start = Date.now()
+
+    try {
+      const historyText = formatGameHistoryCompact(history)
+      const isHongZhongGang = gameMode === 'hongzhong_gang'
+      
+      const systemPrompt = `你是红中麻将概率分析与复盘专家，帮助用户找出对局中的失误与薄弱点。
+当前对局模式：${isHongZhongGang ? '【红中杠麻】（规则：红中不能当赖子，必须单杠补摸，只能自摸胡牌）' : '【传统红中麻将】（规则：红中是万能赖子牌，只能自摸胡牌）'}。
+
+现在用户打完了一局游戏，你需要扮演“金牌教练”，对其这一局所有的决策进行上帝视角的深度复盘分析。
+
+你的复盘报告格式必须以 Markdown 展现，内容分成以下 4 个部分：
+
+1. **【大局观评分】**：在开头显式给出一个评分（例如：85分），分值区间 0-100，客观评估玩家本局的综合切牌决策水平。
+2. **【初始配牌解析】**：点评起手牌的质量，并建议最佳的胡牌番型和听牌走向。
+3. **【关键决策分析】**：扫描时序历史，指出玩家决策中的亮点（如精妙的切牌、恰当的杠牌时机）或明显的失误（如错过了杠牌、打错了导致退向/丢张的无效牌等），必须具体指出是在“第X巡”，并说明更佳的选择及概率原因。
+4. **【实战薄弱点及教练建议】**：总结本局玩家暴露出的战术弱点，给出 2-3 条可以提升的改进建议。
+
+分析要求：
+- 严格客观，中文回答，350字左右
+- 指出第几巡时要具体对照用户当时的操作
+- 专业精炼，不讲废话`
+
+      const messages = [
+        { role: 'system' as const, content: systemPrompt },
+        { role: 'user' as const, content: `这是本局的对局时序记录，请总教练进行复盘评估：\n\n${historyText}` }
+      ]
+
+      const requestPayload = {
+        model: config.value.model,
+        messages,
+        max_tokens: 8192,
+        ...(config.value.model.includes('kimi-k') ? { temperature: 1 } : { temperature: config.value.temperature }),
+      }
+      console.log('🚀 [useLLM] 发送上帝视角复盘请求:', requestPayload)
+
+      const response = await fetch(formatApiUrl(config.value.apiUrl), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${config.value.apiKey}`,
+        },
+        body: JSON.stringify(requestPayload),
+      })
+
+      const data = await response.json()
+      console.log('🎯 [useLLM] 上帝视角复盘返回结果:', data)
+      
+      if (response.ok) {
+        const msg = data.choices?.[0]?.message || {}
+        let reasoning = ''
+        let text = msg.content || ''
+        
+        let tempReasoning = msg.reasoning_content || ''
+        if (!tempReasoning && /<think>([\s\S]*?)<\/think>/i.test(text)) {
+          const match = text.match(/<think>([\s\S]*?)<\/think>/i)
+          if (match) tempReasoning = match[1]
+        }
+        
+        if (config.value.showReasoning) {
+          if (tempReasoning) {
+            reasoning = `**【AI 思考过程】**\n_${tempReasoning.trim()}_\n\n`
+          }
+          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+        } else {
+          reasoning = ''
+          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+        }
+        
+        return {
+          success: true,
+          content: (reasoning + text).trim() || '未返回复盘内容',
+          latency: Date.now() - start,
+          model: data.model || config.value.model
+        }
+      } else {
+        return {
+          success: false,
+          error: data.error?.message || `HTTP ${response.status}`,
+          latency: Date.now() - start
+        }
+      }
+    } catch (err: any) {
+      return { success: false, error: err.message || '网络错误', latency: Date.now() - start }
+    } finally {
+      loading.value = false
+    }
+  }
+
   // 判断是否应该自动触发
   function shouldAutoTrigger(trigger: LLMPromptContext['trigger']): boolean {
     if (!isEnabled.value) return false
@@ -299,7 +395,71 @@ ${rulesPrompt}
     isEnabled,
     updateConfig,
     analyze,
+    analyzeGodView,
     shouldAutoTrigger,
     clearResult,
   }
+}
+
+// ============================================================
+// 上帝视角辅助格式化函数
+// ============================================================
+
+function formatTileCompact(t: Tile): string {
+  if (t.suit === 'red_zhong') return 'RZ'
+  const suffixMap: Record<string, string> = {
+    character: 'W',
+    bamboo: 'T',
+    dot: 'B'
+  }
+  return `${t.number}${suffixMap[t.suit] || ''}`
+}
+
+function formatHandCompact(tiles?: Tile[]): string {
+  if (!tiles || tiles.length === 0) return '无'
+  return tiles.map(t => formatTileCompact(t)).join(' ')
+}
+
+function formatMeldsCompact(melds?: Meld[]): string {
+  if (!melds || melds.length === 0) return '无'
+  const typeMap: Record<string, string> = {
+    pong: '碰',
+    exposed_gang: '明杠',
+    concealed_gang: '暗杠',
+    red_zhong_gang: '红中杠'
+  }
+  return melds.map(m => `${typeMap[m.type] || m.type}${formatTileCompact(m.tile)}`).join('、')
+}
+
+function formatGameHistoryCompact(history: GameAction[]): string {
+  if (!history || history.length === 0) return '无对局记录'
+  
+  const lines: string[] = []
+  
+  for (const act of history) {
+    if (act.type === 'starting_hand') {
+      lines.push(`【配牌/初始手牌】: ${formatHandCompact(act.handSnapshot)}`)
+      continue
+    }
+    
+    const prefix = `第 ${act.round} 巡:`
+    if (act.type === 'draw' && act.tile) {
+      lines.push(`${prefix} 摸牌: ${formatTileCompact(act.tile)} | 此时手牌: ${formatHandCompact(act.handSnapshot)} | 副露: ${formatMeldsCompact(act.meldsSnapshot)}`)
+    } else if (act.type === 'discard' && act.tile) {
+      if (act.fromOpponent !== undefined) {
+        const oppNames = ['东', '南', '西']
+        lines.push(`${prefix} 对手[${oppNames[act.fromOpponent] || act.fromOpponent}] 打出: ${formatTileCompact(act.tile)}`)
+      } else {
+        lines.push(`${prefix} 打出: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)}`)
+      }
+    } else if (act.type === 'pong' && act.tile) {
+      lines.push(`${prefix} 碰牌: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)}`)
+    } else if (act.type === 'gang' && act.tile) {
+      lines.push(`${prefix} 杠牌: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)}`)
+    } else if (act.type === 'self_draw' && act.tile) {
+      lines.push(`${prefix} 🎉 自摸胡牌! 胡牌张: ${formatTileCompact(act.tile)} | 最终手牌: ${formatHandCompact(act.handSnapshot)} | 最终副露: ${formatMeldsCompact(act.meldsSnapshot)}`)
+    }
+  }
+  
+  return lines.join('\n')
 }
