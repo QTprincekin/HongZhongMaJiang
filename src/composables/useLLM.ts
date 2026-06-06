@@ -213,7 +213,7 @@ ${rulesPrompt}
       const requestPayload = {
         model: config.value.model,
         messages,
-        max_tokens: 8192,
+        max_tokens: config.value.maxTokens || 2048,
         ...(config.value.model.includes('kimi-k') ? { temperature: 1 } : { temperature: config.value.temperature }),
       };
       console.log('🚀 [useLLM] 发送给 AI 的完整请求体:', requestPayload);
@@ -265,9 +265,10 @@ ${rulesPrompt}
         }
         return result.value
       } else {
+        const errorMsg = data.error?.message || data.message || data.msg || JSON.stringify(data) || `HTTP ${response.status}`;
         const errorResult = {
           success: false as const,
-          error: data.error?.message || `HTTP ${response.status}`,
+          error: errorMsg,
           latency: Date.now() - start
         }
         result.value = errorResult
@@ -323,7 +324,7 @@ ${rulesPrompt}
       const requestPayload = {
         model: config.value.model,
         messages,
-        max_tokens: 8192,
+        max_tokens: 4096,
         ...(config.value.model.includes('kimi-k') ? { temperature: 1 } : { temperature: config.value.temperature }),
       }
       console.log('🚀 [useLLM] 发送上帝视角复盘请求:', requestPayload)
@@ -368,9 +369,10 @@ ${rulesPrompt}
           model: data.model || config.value.model
         }
       } else {
+        const errorMsg = data.error?.message || data.message || data.msg || JSON.stringify(data) || `HTTP ${response.status}`;
         return {
           success: false,
-          error: data.error?.message || `HTTP ${response.status}`,
+          error: errorMsg,
           latency: Date.now() - start
         }
       }
