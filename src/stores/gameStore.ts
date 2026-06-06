@@ -1171,7 +1171,8 @@ export const useGameStore = defineStore('game', () => {
       type: 'starting_hand',
       round: 0,
       handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
-      meldsSnapshot: []
+      meldsSnapshot: [],
+      ...captureDataSnapshot()
     })
     opponentWinHand.value = null
     opponentPendingPong.value = null
