@@ -294,22 +294,26 @@ ${rulesPrompt}
       const historyText = formatGameHistoryCompact(history)
       const isHongZhongGang = gameMode === 'hongzhong_gang'
       
-      const systemPrompt = `你是红中麻将概率分析与复盘专家，帮助用户找出对局中的失误与薄弱点。
+      const systemPrompt = `你需要扮演红中麻将概率分析与复盘专家，以中立、客观、严谨的态度，对用户的这一局所有决策进行上帝视角的深度复盘分析。
 当前对局模式：${isHongZhongGang ? '【红中杠麻】（规则：红中不能当赖子，必须单杠补摸，只能自摸胡牌）' : '【传统红中麻将】（规则：红中是万能赖子牌，只能自摸胡牌）'}。
 
-现在用户打完了一局游戏，你需要扮演“金牌教练”，对其这一局所有的决策进行上帝视角的深度复盘分析。
+用户打完了一局游戏，你需要结合对局时序历史以及每巡的向听数、有效进张等精准概率快照，给出数据驱动的复盘分析报告。
 
-你的复盘报告格式必须以 Markdown 展现，内容分成以下 4 个部分：
+复盘报告格式必须以 Markdown 展现，内容分成以下 4 个部分：
 
-1. **【大局观评分】**：在开头显式给出一个评分（例如：85分），分值区间 0-100，客观评估玩家本局的综合切牌决策水平。
-2. **【初始配牌解析】**：点评起手牌的质量，并建议最佳的胡牌番型和听牌走向。
-3. **【关键决策分析】**：扫描时序历史，指出玩家决策中的亮点（如精妙的切牌、恰当的杠牌时机）或明显的失误（如错过了杠牌、打错了导致退向/丢张的无效牌等），必须具体指出是在“第X巡”，并说明更佳的选择及概率原因。
-4. **【实战薄弱点及教练建议】**：总结本局玩家暴露出的战术弱点，给出 2-3 条可以提升的改进建议。
+1. **【大局观评分】**：在开头显式给出一个评分（例如：85分），分值区间 0-100，客观评估玩家本局的综合决策水平。
+2. **【关键决策对比】**：扫描对局时序，一旦发现玩家的选择不是理论上保留最大有效进张或最低向听数的打法（即有明显“打错”的选择时），必须明确对比指出：
+   - **第X巡**
+   - **玩家打出**：具体牌名（如“5筒”）（玩家保留有效进张：Y张）
+   - **系统推荐打出**：最优推荐牌名（如“3筒”）（最大可能进张：W张）
+   - **详细的理由**：从向听数走势、概率高低及麻将牌理逻辑，客观详细分析该手打错的原因。
+3. **【初始配牌解析】**：点评起手牌的质量，并建议最佳的胡牌番型和听牌走向。
+4. **【战术总结与教练建议】**：总结本局玩家体现出的决策倾向（如追求速度的极致进攻、抑或规避点炮的防守），给出 2-3 条基于数据与概率的提升建议。
 
-分析要求：
-- 严格客观，中文回答，350字左右
-- 指出第几巡时要具体对照用户当时的操作
-- 专业精炼，不讲废话`
+分析要求与限制：
+- 语气要求：中立、客观、严谨，打错的决策必须一针见写地结合概率数据清晰指出来，无倾向性情绪。
+- 必须统一使用中文牌名表达（如“3筒”、“5条”、“1万”、“红中”），严禁在分析中使用“3T”、“5B”、“RZ”等英文缩写。
+- 字数不限，请对整局的概率与数据演化进行极其详尽、全面的结构化分析。`
 
       const messages = [
         { role: 'system' as const, content: systemPrompt },
@@ -405,12 +409,13 @@ ${rulesPrompt}
 // 上帝视角辅助格式化函数
 // ============================================================
 
+// 格式化牌名表记为中文简写形式（如红中、5万、3条、2筒）
 function formatTileCompact(t: Tile): string {
-  if (t.suit === 'red_zhong') return 'RZ'
+  if (t.suit === 'red_zhong') return '红中'
   const suffixMap: Record<string, string> = {
-    character: 'W',
-    bamboo: 'T',
-    dot: 'B'
+    character: '万',
+    bamboo: '条',
+    dot: '筒'
   }
   return `${t.number}${suffixMap[t.suit] || ''}`
 }
@@ -435,27 +440,38 @@ function formatGameHistoryCompact(history: GameAction[]): string {
   if (!history || history.length === 0) return '无对局记录'
   
   const lines: string[] = []
+  const oppNames = ['东', '南', '西']
   
   for (const act of history) {
     if (act.type === 'starting_hand') {
-      lines.push(`【配牌/初始手牌】: ${formatHandCompact(act.handSnapshot)}`)
+      const shantenText = act.shantenSnapshot !== undefined ? `${act.shantenSnapshot}向听` : '未知'
+      const effCount = act.effectiveDrawCountSnapshot || 0
+      const effTiles = formatHandCompact(act.effectiveDrawTilesSnapshot)
+      const prob = act.singleDrawProbSnapshot !== undefined ? `${(act.singleDrawProbSnapshot * 100).toFixed(1)}%` : '0%'
+      
+      lines.push(`【配牌/初始手牌】: ${formatHandCompact(act.handSnapshot)} [向听数: ${shantenText} | 有效进张: ${effTiles} (共 ${effCount} 张) | 自摸概率: ${prob}]`)
       continue
     }
     
     const prefix = `第 ${act.round} 巡:`
+    const shantenText = act.shantenSnapshot !== undefined ? `${act.shantenSnapshot}向听` : '未知'
+    const effCount = act.effectiveDrawCountSnapshot || 0
+    const effTiles = formatHandCompact(act.effectiveDrawTilesSnapshot)
+    const prob = act.singleDrawProbSnapshot !== undefined ? `${(act.singleDrawProbSnapshot * 100).toFixed(1)}%` : '0%'
+    const deckRem = act.deckRemainingSnapshot !== undefined ? ` (牌堆剩 ${act.deckRemainingSnapshot} 张)` : ''
+    
     if (act.type === 'draw' && act.tile) {
-      lines.push(`${prefix} 摸牌: ${formatTileCompact(act.tile)} | 此时手牌: ${formatHandCompact(act.handSnapshot)} | 副露: ${formatMeldsCompact(act.meldsSnapshot)}`)
+      lines.push(`${prefix} 摸牌: ${formatTileCompact(act.tile)} | 此时手牌: ${formatHandCompact(act.handSnapshot)} | 副露: ${formatMeldsCompact(act.meldsSnapshot)} [向听数: ${shantenText} | 有效进张: ${effTiles} (共 ${effCount} 张) | 自摸概率: ${prob}${deckRem}]`)
     } else if (act.type === 'discard' && act.tile) {
       if (act.fromOpponent !== undefined) {
-        const oppNames = ['东', '南', '西']
         lines.push(`${prefix} 对手[${oppNames[act.fromOpponent] || act.fromOpponent}] 打出: ${formatTileCompact(act.tile)}`)
       } else {
-        lines.push(`${prefix} 打出: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)}`)
+        lines.push(`${prefix} 打出: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)} [玩家此手保留有效进张: ${effCount} 张 | 向听数: ${shantenText}${deckRem}]`)
       }
     } else if (act.type === 'pong' && act.tile) {
-      lines.push(`${prefix} 碰牌: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)}`)
+      lines.push(`${prefix} 碰牌: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)} [碰后向听数: ${shantenText} | 碰后有效进张: ${effCount} 张]`)
     } else if (act.type === 'gang' && act.tile) {
-      lines.push(`${prefix} 杠牌: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)}`)
+      lines.push(`${prefix} 杠牌: ${formatTileCompact(act.tile)} | 决策前手牌: ${formatHandCompact(act.handSnapshot)} [杠后向听数: ${shantenText} | 杠后有效进张: ${effCount} 张]`)
     } else if (act.type === 'self_draw' && act.tile) {
       lines.push(`${prefix} 🎉 自摸胡牌! 胡牌张: ${formatTileCompact(act.tile)} | 最终手牌: ${formatHandCompact(act.handSnapshot)} | 最终副露: ${formatMeldsCompact(act.meldsSnapshot)}`)
     }
