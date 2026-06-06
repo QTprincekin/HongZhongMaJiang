@@ -71,6 +71,10 @@
             <span class="setting-label">模型</span>
             <input type="text" v-model="llmConfig.model" placeholder="gpt-4o-mini" @blur="saveLLMConfig" />
           </label>
+          <label class="setting-item">
+            <span class="setting-label">最大 Token</span>
+            <input type="number" v-model.number="llmConfig.maxTokens" placeholder="4096" @blur="saveLLMConfig" />
+          </label>
         </div>
       </div>
     </transition>

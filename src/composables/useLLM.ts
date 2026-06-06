@@ -17,7 +17,7 @@ const DEFAULT_CONFIG: LLMConfig = {
   apiUrl: '',
   apiKey: '',
   model: 'gpt-4o-mini',
-  maxTokens: 1024,
+  maxTokens: 4096,
   temperature: 0.7,
   showReasoning: true,
   enabledTriggers: ['pong_decision', 'gang_decision', 'switch_decision', 'low_probability', 'manual'],
@@ -233,16 +233,24 @@ ${rulesPrompt}
         const msg = data.choices?.[0]?.message || {}
         let reasoning = ''
         let text = msg.content || ''
-        
+                
         // 优先获取官方接口的 reasoning_content
         let tempReasoning = msg.reasoning_content || ''
         
-        // 兼容第三方中转，从正文中分离出 <think> ... </think> 标签内容
-        if (!tempReasoning && /<think>([\s\S]*?)<\/think>/i.test(text)) {
-          const match = text.match(/<think>([\s\S]*?)<\/think>/i)
-          if (match) {
-            tempReasoning = match[1]
+        // 兼容第三方中转，从正文中分离出 <think> ... </think> 标签内容（包含未闭合被截断的情况）
+        if (!tempReasoning) {
+          if (/<think>([\s\S]*?)<\/think>/i.test(text)) {
+            const match = text.match(/<think>([\s\S]*?)<\/think>/i)
+            if (match) tempReasoning = match[1]
+            text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+          } else if (/<think>/i.test(text)) {
+            const match = text.match(/<think>([\s\S]*)$/i)
+            if (match) tempReasoning = match[1]
+            text = text.replace(/<think>[\s\S]*$/gi, '').trim()
           }
+        } else {
+          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+          text = text.replace(/<think>[\s\S]*$/gi, '').trim()
         }
         
         // 依据用户设置的 showReasoning 状态进行格式化或过滤剔除
@@ -250,10 +258,8 @@ ${rulesPrompt}
           if (tempReasoning) {
             reasoning = `**【AI 思考过程】**\n_${tempReasoning.trim()}_\n\n`
           }
-          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
         } else {
           reasoning = ''
-          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
         }
         
         const finalContent = (reasoning + text).trim()
@@ -347,21 +353,30 @@ ${rulesPrompt}
         const msg = data.choices?.[0]?.message || {}
         let reasoning = ''
         let text = msg.content || ''
-        
+                
         let tempReasoning = msg.reasoning_content || ''
-        if (!tempReasoning && /<think>([\s\S]*?)<\/think>/i.test(text)) {
-          const match = text.match(/<think>([\s\S]*?)<\/think>/i)
-          if (match) tempReasoning = match[1]
+        // 兼容第三方中转，从正文中分离出 <think> ... </think> 标签内容（包含未闭合被截断的情况）
+        if (!tempReasoning) {
+          if (/<think>([\s\S]*?)<\/think>/i.test(text)) {
+            const match = text.match(/<think>([\s\S]*?)<\/think>/i)
+            if (match) tempReasoning = match[1]
+            text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+          } else if (/<think>/i.test(text)) {
+            const match = text.match(/<think>([\s\S]*)$/i)
+            if (match) tempReasoning = match[1]
+            text = text.replace(/<think>[\s\S]*$/gi, '').trim()
+          }
+        } else {
+          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+          text = text.replace(/<think>[\s\S]*$/gi, '').trim()
         }
         
         if (config.value.showReasoning) {
           if (tempReasoning) {
             reasoning = `**【AI 思考过程】**\n_${tempReasoning.trim()}_\n\n`
           }
-          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
         } else {
           reasoning = ''
-          text = text.replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
         }
         
         return {
