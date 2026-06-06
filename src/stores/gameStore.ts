@@ -539,6 +539,9 @@ export const useGameStore = defineStore('game', () => {
     })
     // 碰来的牌直接进 meld，不进手牌
     opp.melds.push({ type: 'pong', tile, fromOpponent: false })
+    // 对手碰牌：把对手拿去碰的另外2张也计入已见牌（加上打出的1张，共3张已见）
+    deck.value = addVisibleTile(deck.value, tile)
+    deck.value = addVisibleTile(deck.value, tile)
     opp.lastDiscard = undefined
     opponentPendingPong.value = null
     opponentPendingGang.value = null
@@ -555,10 +558,19 @@ export const useGameStore = defineStore('game', () => {
       // 手牌 13 - 3 = 10，补摸1 = 11，出1 = 10，+meld4 = 14
       opp.hand = removeTiles(opp.hand, tile.suit, tile.number, 3)
       opp.melds.push({ type: 'exposed_gang', tile, fromOpponent: false })
+      // 明杠：对手拿出的3张牌也计入已见牌（加上对手打出的1张，共4张已见）
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
     } else {
       // 暗杠：手牌4张
       opp.hand = removeTiles(opp.hand, tile.suit, tile.number, 4)
       opp.melds.push({ type: 'concealed_gang', tile, fromOpponent: false })
+      // 暗杠：对手扣下的4张牌亮出来计入已见牌
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
     }
     opponentPendingPong.value = null
     opponentPendingGang.value = null
@@ -698,6 +710,8 @@ export const useGameStore = defineStore('game', () => {
       const idx = opp.river.findIndex(t => tilesEqual(t, tile))
       if (idx >= 0) opp.river.splice(idx, 1)
     }
+    // 对手打出的1张已在此前addVisibleTile，这里玩家碰，需把玩家拿去碰的另外2张加入已见牌（加2次）
+    deck.value = addVisibleTile(deck.value, tile)
     deck.value = addVisibleTile(deck.value, tile)
     history.value.push({
       type: 'pong',
@@ -784,7 +798,18 @@ export const useGameStore = defineStore('game', () => {
       type: type === 'exposed' ? 'exposed_gang' : 'concealed_gang',
       tile, drawnAfter: drawn, fromOpponent: type === 'exposed',
     })
-    deck.value = addVisibleTile(deck.value, tile)
+    if (type === 'exposed') {
+      // 明杠：对手打出的1张已经加过，这里把手里拿去杠的另外3张也计入已见牌
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+    } else {
+      // 暗杠：把手里的4张暗杠牌全部亮出计入已见牌
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+      deck.value = addVisibleTile(deck.value, tile)
+    }
     history.value.push({
       type: 'gang',
       tile,
