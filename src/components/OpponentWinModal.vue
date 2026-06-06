@@ -49,17 +49,17 @@
         </div>
 
         <!-- 抓马展示（仅记分模式） -->
-        <div v-if="scoringInfo && scoringInfo.bonusDrawTiles.length > 0" class="bonus-area">
+        <div v-if="scoringInfo && scoringInfo.bonusDrawTiles && scoringInfo.bonusDrawTiles.length > 0" class="bonus-area">
           <div class="area-label">
             🐴 抓马
-            <span class="bonus-count">共 {{ scoringInfo.bonusDrawCount }} 个</span>
-            <span v-if="scoringInfo.streak > 1" class="streak-badge">
+            <span class="bonus-count">共 {{ scoringInfo?.bonusDrawCount }} 个</span>
+            <span v-if="scoringInfo?.streak && scoringInfo.streak > 1" class="streak-badge">
               🔥 {{ scoringInfo.streak }}连胜
             </span>
           </div>
           <div class="bonus-tiles-row">
             <div
-              v-for="(tile, i) in scoringInfo.bonusDrawTiles"
+              v-for="(tile, i) in (scoringInfo?.bonusDrawTiles || [])"
               :key="i"
               class="bonus-tile-wrap"
               :class="{ hit: isBonusTile(tile) }"
@@ -71,7 +71,7 @@
           <!-- 胡牌类型（红中杠麻专用） -->
           <div v-if="scoringInfo?.huTypeName" class="hu-type-badge">
             {{ scoringInfo.huTypeName }}
-            <span v-if="scoringInfo.scoreMultiplier && scoringInfo.scoreMultiplier > 1" class="multiplier">×{{ scoringInfo.scoreMultiplier }}</span>
+            <span v-if="scoringInfo?.scoreMultiplier && scoringInfo.scoreMultiplier > 1" class="multiplier">×{{ scoringInfo.scoreMultiplier }}</span>
           </div>
 
           <!-- 得分总计 -->
@@ -80,15 +80,15 @@
             <template v-if="scoringInfo?.baseScore !== undefined">
               <div class="score-line">
                 <span class="score-label">底分</span>
-                <span class="score-val">{{ scoringInfo.baseScore }}</span>
+                <span class="score-val">{{ scoringInfo?.baseScore }}</span>
               </div>
               <div class="score-line">
                 <span class="score-label">抓马得分</span>
-                <span class="score-val hit">+{{ scoringInfo.bonusScore }}</span>
+                <span class="score-val hit">+{{ scoringInfo?.bonusScore }}</span>
               </div>
-              <div v-if="scoringInfo.redZhongBonus && scoringInfo.redZhongBonus > 0" class="score-line">
-                <span class="score-label">红中加成 ({{ scoringInfo.redZhongCount }}个)</span>
-                <span class="score-val hit">+{{ scoringInfo.redZhongBonus }}</span>
+              <div v-if="scoringInfo?.redZhongBonus && scoringInfo.redZhongBonus > 0" class="score-line">
+                <span class="score-label">红中加成 ({{ scoringInfo?.redZhongCount }}个)</span>
+                <span class="score-val hit">+{{ scoringInfo?.redZhongBonus }}</span>
               </div>
             </template>
             <!-- 传统红中麻将计分 -->
@@ -97,14 +97,14 @@
                 <span class="score-label">底分</span>
                 <span class="score-val">10</span>
               </div>
-              <div v-if="scoringInfo?.hitCount > 0" class="score-line">
-                <span class="score-label">命中 {{ scoringInfo.hitCount }} 马</span>
-                <span class="score-val hit">+{{ scoringInfo.hitCount * 10 }}</span>
+              <div v-if="scoringInfo?.hitCount !== undefined && scoringInfo.hitCount > 0" class="score-line">
+                <span class="score-label">命中 {{ scoringInfo?.hitCount }} 马</span>
+                <span class="score-val hit">+{{ (scoringInfo?.hitCount || 0) * 10 }}</span>
               </div>
             </template>
             <div class="score-line total">
               <span class="score-label">单家扣分</span>
-              <span class="score-val">{{ scoringInfo ? Math.floor(scoringInfo.winnerTotal / 3) : 0 }}</span>
+              <span class="score-val">{{ scoringInfo?.winnerTotal ? Math.floor(scoringInfo.winnerTotal / 3) : 0 }}</span>
             </div>
             <div class="score-line total winner">
               <span class="score-label">赢家总得</span>
