@@ -179,6 +179,47 @@ export const useGameStore = defineStore('game', () => {
     return analyzeDiscardOptions(playerHand.value, playerMelds.value, deck.value)
   })
 
+  // 局势快照捕获函数
+  function captureDataSnapshot() {
+    const shanten = shantenResult.value.shanten
+    const handLen = getEffectiveHandLength()
+    const is13 = handLen === 13
+
+    let effCount = 0
+    let effTiles: Tile[] = []
+
+    if (is13) {
+      const res = analyzeEffectiveDraws(playerHand.value, playerMelds.value, deck.value)
+      if (res) {
+        effCount = res.totalEffectiveCount
+        effTiles = res.effectiveDraws.map(d => d.tile)
+      }
+    } else if (handLen === 14) {
+      const res = analyzeDiscardOptions(playerHand.value, playerMelds.value, deck.value)
+      if (res && res.bestDiscard) {
+        effCount = res.bestDiscard.effectiveCount
+        effTiles = res.bestDiscard.effectiveDraws.map(d => d.tile)
+      }
+    }
+
+    const waitingRes = analyzeWaiting(playerHand.value, playerMelds.value)
+    let targetTiles = waitingRes.waitingTiles
+    if (gameMode.value === 'hongzhong_gang') {
+      targetTiles = targetTiles.filter(t => t.suit !== TileSuit.RED_ZHONG)
+    }
+    const probRes = calcProbability(deck.value, targetTiles, playerHand.value, playerMelds.value)
+    const singleDrawProb = probRes.singleDrawProb
+
+    return {
+      shantenSnapshot: shanten,
+      effectiveDrawCountSnapshot: effCount,
+      effectiveDrawTilesSnapshot: JSON.parse(JSON.stringify(effTiles)),
+      singleDrawProbSnapshot: singleDrawProb,
+      deckRemainingSnapshot: deck.value.tiles.length,
+      visibleTilesSnapshot: JSON.parse(JSON.stringify(deck.value.visibleTiles || []))
+    }
+  }
+
   // ===================== 开始游戏 =====================
   function startGame(mode?: GameMode) {
     if (mode) {
@@ -203,7 +244,8 @@ export const useGameStore = defineStore('game', () => {
       type: 'starting_hand',
       round: 0,
       handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
-      meldsSnapshot: []
+      meldsSnapshot: [],
+      ...captureDataSnapshot()
     })
     round.value = 1
     currentRoundNumber.value = 1
@@ -251,7 +293,8 @@ export const useGameStore = defineStore('game', () => {
       tile,
       round: round.value,
       handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
-      meldsSnapshot: JSON.parse(JSON.stringify(playerMelds.value))
+      meldsSnapshot: JSON.parse(JSON.stringify(playerMelds.value)),
+      ...captureDataSnapshot()
     })
 
     // 红中杠麻：检查是否四红中直接胡牌
@@ -345,7 +388,8 @@ export const useGameStore = defineStore('game', () => {
       round: round.value,
       meld: playerMelds.value[playerMelds.value.length - 1],
       handSnapshot: handBeforeRedZhongGang,
-      meldsSnapshot: meldsBeforeRedZhongGang
+      meldsSnapshot: meldsBeforeRedZhongGang,
+      ...captureDataSnapshot()
     })
     
     // 杠后补摸一张
@@ -388,7 +432,8 @@ export const useGameStore = defineStore('game', () => {
       tile,
       round: round.value,
       handSnapshot: JSON.parse(JSON.stringify(playerHand.value)),
-      meldsSnapshot: JSON.parse(JSON.stringify(playerMelds.value))
+      meldsSnapshot: JSON.parse(JSON.stringify(playerMelds.value)),
+      ...captureDataSnapshot()
     })
     endRound(3, true, tile)
   }
@@ -415,7 +460,8 @@ export const useGameStore = defineStore('game', () => {
       tile,
       round: round.value,
       handSnapshot: handBeforeDiscard,
-      meldsSnapshot: meldsBeforeDiscard
+      meldsSnapshot: meldsBeforeDiscard,
+      ...captureDataSnapshot()
     })
     selectedTile.value = undefined
     message.value = `打出 ${formatTile(tile)}`
@@ -659,7 +705,8 @@ export const useGameStore = defineStore('game', () => {
       round: round.value,
       meld: playerMelds.value[playerMelds.value.length - 1],
       handSnapshot: handBeforePong,
-      meldsSnapshot: meldsBeforePong
+      meldsSnapshot: meldsBeforePong,
+      ...captureDataSnapshot()
     })
     pendingPongTile.value = undefined
     pendingFrom.value = null
@@ -744,7 +791,8 @@ export const useGameStore = defineStore('game', () => {
       round: round.value,
       meld: playerMelds.value[playerMelds.value.length - 1],
       handSnapshot: handBeforeGang,
-      meldsSnapshot: meldsBeforeGang
+      meldsSnapshot: meldsBeforeGang,
+      ...captureDataSnapshot()
     })
     pendingGangTile.value = undefined
     pendingPongTile.value = undefined
