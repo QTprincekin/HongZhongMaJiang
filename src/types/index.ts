@@ -375,6 +375,12 @@ export interface GameAction {
   meld?: Meld
   handSnapshot?: Tile[]
   meldsSnapshot?: Meld[]
+  shantenSnapshot?: number             // 当巡向听数
+  effectiveDrawCountSnapshot?: number   // 当巡有效进张总张数
+  effectiveDrawTilesSnapshot?: Tile[]  // 当巡有效进张牌型列表
+  singleDrawProbSnapshot?: number      // 当巡单巡自摸概率
+  deckRemainingSnapshot?: number       // 当巡牌堆剩余张数
+  visibleTilesSnapshot?: Tile[]        // 当巡已见牌列表(河面+碰杠亮出)
 }
 
 // ============================================================
