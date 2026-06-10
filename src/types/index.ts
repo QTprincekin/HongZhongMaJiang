@@ -381,6 +381,8 @@ export interface GameAction {
   singleDrawProbSnapshot?: number      // 当巡单巡自摸概率
   deckRemainingSnapshot?: number       // 当巡牌堆剩余张数
   visibleTilesSnapshot?: Tile[]        // 当巡已见牌列表(河面+碰杠亮出)
+  discardDeviation?: number            // 出牌导致的进张流失量
+  recBestTileName?: string             // 推荐的最佳出牌牌名
 }
 
 // ============================================================
@@ -409,3 +411,6 @@ export type ContentBlock =
   | { type: 'list'; items: string[] }
   | { type: 'rule'; title: string; desc: string }
   | { type: 'quiz'; question: string; options: string[]; answer: number; explanation: string }
+
+export * from './exercise'
+

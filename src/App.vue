@@ -20,6 +20,11 @@
           >训练</button>
           <button
             class="view-tab"
+            :class="{ active: currentView === 'exercise' }"
+            @click="currentView = 'exercise'"
+          >习题</button>
+          <button
+            class="view-tab"
             :class="{ active: currentView === 'tutorial' }"
             @click="currentView = 'tutorial'"
           >教程</button>
@@ -435,11 +440,78 @@
       @close="showGodViewModal = false"
     />
 
+    <!-- 恶手即时警告弹窗 -->
+    <transition name="fade">
+      <div v-if="game.showMistakeAlert && game.mistakeInfo" class="mistake-alert-overlay">
+        <div class="mistake-alert-card panel animate-in">
+          <div class="mistake-header">
+            <span class="mistake-icon">⚠️</span>
+            <span class="mistake-title">恶手警告！进张流失</span>
+          </div>
+          
+          <div class="mistake-body">
+            <p class="mistake-summary">
+              你刚才选择打出 <strong class="text-danger">{{ formatTile(game.mistakeInfo.userTile) }}</strong>，
+              这导致你的进张优势流失了 <strong class="text-primary font-mono" style="font-size: var(--text-lg)">{{ game.mistakeInfo.reduction }}</strong> 张！
+            </p>
+
+            <div class="mistake-compare-grid">
+              <div class="compare-box user">
+                <div class="box-label">你的选择</div>
+                <div class="box-tile">
+                  <TileView :tile="game.mistakeInfo.userTile" small />
+                </div>
+                <div class="box-details font-mono">
+                  <div>有效进张: {{ game.mistakeInfo.userEffectiveCount }}张</div>
+                  <div>向听数: {{ game.mistakeInfo.userShanten }}向听</div>
+                </div>
+              </div>
+
+              <div class="compare-arrow">➡️</div>
+
+              <div class="compare-box best">
+                <div class="box-label text-success">系统推荐</div>
+                <div class="box-tile">
+                  <TileView :tile="game.mistakeInfo.bestTile" small />
+                </div>
+                <div class="box-details font-mono">
+                  <div>有效进张: {{ game.mistakeInfo.bestEffectiveCount }}张</div>
+                  <div>向听数: {{ game.mistakeInfo.bestShanten }}向听</div>
+                </div>
+              </div>
+            </div>
+            
+            <p class="mistake-tips" v-if="game.mistakeInfo.userShanten > game.mistakeInfo.bestShanten">
+              💡 警告：此打法导致你的向听数**升高了**，属于退步打法，极度拖慢胡牌速度！
+            </p>
+            <p class="mistake-tips" v-else>
+              💡 提示：虽然向听数未退步，但拆错了搭子。推荐打法能保留更多的摸牌面，大幅提升下一巡自摸几率。
+            </p>
+          </div>
+
+          <div class="mistake-footer">
+            <button class="btn btn-secondary" @click="game.undoLastDiscard()">
+              ↩️ 悔牌重打
+            </button>
+            <button class="btn btn-primary btn-danger-glow" @click="game.confirmDiscard()">
+              固执己见
+            </button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
   </div>
 
   <!-- 教程视图（与训练彼此独立） -->
   <TutorialView
     v-if="currentView === 'tutorial'"
+    @back="currentView = 'game'"
+  />
+
+  <!-- 习题视图（与训练、教程彼此独立） -->
+  <ExerciseView
+    v-if="currentView === 'exercise'"
     @back="currentView = 'game'"
   />
 </template>
@@ -465,6 +537,7 @@ import GameModeSelector from '@/components/GameModeSelector.vue'
 import { useLLM } from '@/composables/useLLM'
 import { useSimulator } from '@/composables/useSimulator'
 import TutorialView from '@/components/tutorial/TutorialView.vue'
+import ExerciseView from '@/components/exercise/ExerciseView.vue'
 import type { Tile, LLMPromptContext, Meld, HuType, GameMode } from '@/types'
 import { AIDifficulty } from '@/types'
 import { HU_TYPE_LABELS } from '@/types'
@@ -473,7 +546,7 @@ const game = useGameStore()
 const llm = useLLM()
 const sim = useSimulator()
 
-const currentView = ref<'mode-select' | 'game' | 'tutorial'>('mode-select')
+const currentView = ref<'mode-select' | 'game' | 'tutorial' | 'exercise'>('mode-select')
 const showSettings = ref(false)
 const copySuccess = ref(false)
 
@@ -1536,5 +1609,148 @@ function onWinModalClose() {
 @media (max-width: 480px) {
   .app-title { display: none; }
   .round-badge { display: none; }
+}
+
+/* ============================================================
+   恶手警告弹窗
+   ============================================================ */
+.mistake-alert-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(10, 11, 20, 0.85);
+  backdrop-filter: blur(10px);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.mistake-alert-card {
+  width: 100%;
+  max-width: 520px;
+  background: var(--color-surface);
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  border-radius: var(--radius);
+  padding: 28px;
+  box-shadow: 0 0 30px rgba(255, 71, 87, 0.15), var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.mistake-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 12px;
+}
+
+.mistake-icon {
+  font-size: 28px;
+  filter: drop-shadow(0 0 8px rgba(255, 71, 87, 0.6));
+}
+
+.mistake-title {
+  font-size: var(--text-lg);
+  font-weight: 800;
+  color: var(--color-danger);
+  letter-spacing: 0.5px;
+}
+
+.mistake-summary {
+  font-size: var(--text-base);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.mistake-compare-grid {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 10px 0;
+}
+
+.compare-box {
+  flex: 1;
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.25s;
+}
+
+.compare-box.user {
+  border-color: rgba(255, 71, 87, 0.2);
+}
+
+.compare-box.user:hover {
+  border-color: rgba(255, 71, 87, 0.4);
+}
+
+.compare-box.best {
+  border-color: rgba(61, 217, 192, 0.2);
+}
+
+.compare-box.best:hover {
+  border-color: rgba(61, 217, 192, 0.4);
+}
+
+.box-label {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  color: var(--color-text-muted);
+}
+
+.box-tile {
+  height: 54px;
+  display: flex;
+  align-items: center;
+}
+
+.box-details {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  text-align: center;
+  line-height: 1.5;
+}
+
+.compare-arrow {
+  font-size: var(--text-lg);
+  color: var(--color-text-muted);
+}
+
+.mistake-tips {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  background: rgba(247, 201, 72, 0.08);
+  border: 1px dashed rgba(247, 201, 72, 0.2);
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
+}
+
+.mistake-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--color-border);
+  padding-top: 18px;
+}
+
+.btn-danger-glow {
+  background: linear-gradient(135deg, var(--color-danger), #ff6b81) !important;
+  color: white !important;
+}
+
+.btn-danger-glow:hover {
+  background: #ff4757 !important;
+  box-shadow: 0 0 15px rgba(255, 71, 87, 0.45);
 }
 </style>

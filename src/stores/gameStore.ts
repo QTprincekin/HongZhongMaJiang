@@ -69,6 +69,32 @@ export const useGameStore = defineStore('game', () => {
   // 游戏模式
   const gameMode = ref<GameMode>('hongzhong')
 
+  // 恶手警报状态与回溯备份
+  const showMistakeAlert = ref<boolean>(false)
+  const mistakeInfo = ref<{
+    userTile: Tile
+    bestTile: Tile
+    userShanten: number
+    bestShanten: number
+    userEffectiveCount: number
+    bestEffectiveCount: number
+    reduction: number
+  } | null>(null)
+
+  const lastActionState = ref<{
+    playerHand: Tile[]
+    playerMelds: Meld[]
+    playerRiver: Tile[]
+    deck: DeckState
+    opponents: any[]
+    history: any[]
+    round: number
+    gamePhase: GamePhase
+    hasDrawnThisTurn: boolean
+    message: string
+  } | null>(null)
+
+
   // 圈数系统
   const totalRounds = ref<number>(0)   // 0=不记分/无限
   const currentRoundNumber = ref<number>(1)
@@ -450,8 +476,93 @@ export const useGameStore = defineStore('game', () => {
     if (gamePhase.value !== 'my_discard') { message.value = '请先摸牌'; return }
     const idx = playerHand.value.findIndex(t => t.id === tile.id)
     if (idx < 0) { message.value = '找不到这张牌'; return }
+
+    // 恶手审计
+    const rec = discardRecommendation.value
+    if (rec && rec.options && rec.options.length > 0) {
+      const bestOpt = rec.bestDiscard
+      const userOpt = rec.options.find(
+        o => o.discard.suit === tile.suit && o.discard.number === tile.number
+      )
+
+      let isMistake = false
+      let userShanten = 0
+      let userEffectiveCount = 0
+
+      if (!userOpt) {
+        // 向听数退步
+        isMistake = true
+        userShanten = shantenResult.value.shanten + 1
+        userEffectiveCount = 0
+      } else if (bestOpt.effectiveCount - userOpt.effectiveCount >= 3) {
+        // 进张损失 3 张以上
+        isMistake = true
+        userShanten = userOpt.shantenAfter
+        userEffectiveCount = userOpt.effectiveCount
+      }
+
+      if (isMistake && bestOpt && !showMistakeAlert.value) {
+        // 触发警报！
+        // 备份当前状态
+        lastActionState.value = {
+          playerHand: JSON.parse(JSON.stringify(playerHand.value)),
+          playerMelds: JSON.parse(JSON.stringify(playerMelds.value)),
+          playerRiver: JSON.parse(JSON.stringify(playerRiver.value)),
+          deck: JSON.parse(JSON.stringify(deck.value)),
+          opponents: JSON.parse(JSON.stringify(opponents.value)),
+          history: JSON.parse(JSON.stringify(history.value)),
+          round: round.value,
+          gamePhase: gamePhase.value,
+          hasDrawnThisTurn: hasDrawnThisTurn.value,
+          message: message.value
+        }
+
+        // 拼接恶手数据
+        mistakeInfo.value = {
+          userTile: tile,
+          bestTile: bestOpt.discard,
+          userShanten,
+          bestShanten: bestOpt.shantenAfter,
+          userEffectiveCount,
+          bestEffectiveCount: bestOpt.effectiveCount,
+          reduction: bestOpt.effectiveCount - userEffectiveCount
+        }
+
+        showMistakeAlert.value = true
+        message.value = `⚠️ 警告：检测到恶手出牌！打出 ${formatTile(tile)} 会流失大量有效进张。`
+        return
+      }
+    }
+
+    executeDiscard(tile)
+  }
+
+  function executeDiscard(tile: Tile) {
+    const idx = playerHand.value.findIndex(t => t.id === tile.id)
+    if (idx < 0) return
     const handBeforeDiscard = JSON.parse(JSON.stringify(playerHand.value))
     const meldsBeforeDiscard = JSON.parse(JSON.stringify(playerMelds.value))
+    
+    // 计算出牌偏差，以便在上帝视角中展现决策偏差走势
+    let discardDeviation = 0
+    let recBestTileName = ''
+    const rec = discardRecommendation.value
+    if (rec && rec.options && rec.options.length > 0) {
+      const bestOpt = rec.bestDiscard
+      const userOpt = rec.options.find(
+        o => o.discard.suit === tile.suit && o.discard.number === tile.number
+      )
+      if (bestOpt) {
+        recBestTileName = formatTile(bestOpt.discard)
+        if (!userOpt) {
+          // 向听数退步或非合法推荐，惩罚性计为进张流失最大值+5
+          discardDeviation = bestOpt.effectiveCount + 5
+        } else {
+          discardDeviation = Math.max(0, bestOpt.effectiveCount - userOpt.effectiveCount)
+        }
+      }
+    }
+
     playerHand.value.splice(idx, 1)
     playerRiver.value.push(tile)
     deck.value = addVisibleTile(deck.value, tile)
@@ -461,6 +572,8 @@ export const useGameStore = defineStore('game', () => {
       round: round.value,
       handSnapshot: handBeforeDiscard,
       meldsSnapshot: meldsBeforeDiscard,
+      discardDeviation,
+      recBestTileName,
       ...captureDataSnapshot()
     })
     selectedTile.value = undefined
@@ -468,6 +581,35 @@ export const useGameStore = defineStore('game', () => {
     hasDrawnThisTurn.value = false
     // 玩家出牌后，对手依次响应（碰→杠），最后才到玩家下一巡
     startOpponentResponsesAfterPlayerDiscard(tile)
+  }
+
+  function undoLastDiscard() {
+    if (!lastActionState.value) return
+    const state = lastActionState.value
+    playerHand.value = state.playerHand
+    playerMelds.value = state.playerMelds
+    playerRiver.value = state.playerRiver
+    deck.value = state.deck
+    opponents.value = state.opponents
+    history.value = state.history
+    round.value = state.round
+    gamePhase.value = state.gamePhase
+    hasDrawnThisTurn.value = state.hasDrawnThisTurn
+    message.value = state.message
+
+    showMistakeAlert.value = false
+    mistakeInfo.value = null
+    lastActionState.value = null
+    selectedTile.value = undefined
+  }
+
+  function confirmDiscard() {
+    if (!mistakeInfo.value) return
+    const tile = mistakeInfo.value.userTile
+    showMistakeAlert.value = false
+    mistakeInfo.value = null
+    lastActionState.value = null
+    executeDiscard(tile)
   }
 
   // 玩家出牌后，按顺序让对手响应（碰→杠）
@@ -1580,5 +1722,6 @@ export const useGameStore = defineStore('game', () => {
     startGame, draw, discard, pong, rejectPong, gang, rejectGang, win, rejectWin, reset,
     redZhongGang,
     setAIDifficulty, setTotalRounds, confirmRoundEnd,
+    showMistakeAlert, mistakeInfo, undoLastDiscard, confirmDiscard,
   }
 })

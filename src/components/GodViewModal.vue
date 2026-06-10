@@ -11,10 +11,28 @@
         <button class="god-close-btn" @click="handleClose">✕</button>
       </div>
 
+      <!-- 标签页导航 -->
+      <div class="god-tabs">
+        <button 
+          class="tab-item" 
+          :class="{ active: activeTab === 'replay' }" 
+          @click="activeTab = 'replay'"
+        >
+          🕒 时序流水复盘
+        </button>
+        <button 
+          class="tab-item" 
+          :class="{ active: activeTab === 'diagnose' }" 
+          @click="activeTab = 'diagnose'"
+        >
+          🤖 AI 教练深度诊断报告
+        </button>
+      </div>
+
       <!-- 主体内容 -->
-      <div class="god-view-body">
-        <!-- 左侧：图形化回放区 -->
-        <div class="replay-panel">
+      <div class="god-view-body" :class="activeTab">
+        <!-- Tab 1: 时序流水复盘 -->
+        <div v-if="activeTab === 'replay'" class="replay-panel full-width">
           <div class="panel-section-title">🕒 决策时序回放</div>
           
           <!-- 回放控制条 -->
@@ -95,28 +113,12 @@
           </div>
         </div>
 
-        <!-- 右侧：AI 诊断区 -->
-        <div class="ai-report-panel">
-          <div class="panel-section-title">🤖 AI 总教练诊断书</div>
-
-          <!-- 加载中 -->
-          <div v-if="loading" class="ai-loading-state">
-            <div class="skeleton-ring"></div>
-            <div class="loading-dots">
-              <span></span><span></span><span></span>
-            </div>
-            <p class="loading-text">上帝分析中，正在推算最优出牌路径...</p>
-          </div>
-
-          <!-- 分析出错 -->
-          <div v-else-if="errorMsg" class="ai-error-state">
-            <span class="error-icon">⚠️</span>
-            <p class="error-msg-text">{{ errorMsg }}</p>
-            <button class="retry-btn" @click="runGodReview">重新分析</button>
-          </div>
-
-          <!-- 分析成功 -->
-          <div v-else class="ai-content-scroll">
+        <!-- Tab 2: AI 教练深度诊断报告 (左右分栏) -->
+        <template v-else>
+          <!-- 左侧：数据面板 (评分环 + 决策偏差 SVG 图表) -->
+          <div class="diagnose-data-panel">
+            <div class="panel-section-title">📊 本局决策偏差走势</div>
+            
             <!-- 大局观环形评分 -->
             <div v-if="score !== null" class="score-circle-wrapper">
               <div class="score-circle">
@@ -127,10 +129,95 @@
               <div class="score-title">本局大局观决策评分</div>
             </div>
 
-            <!-- AI 诊断详情 -->
-            <div class="ai-report-markdown" v-html="formattedReport"></div>
+            <!-- SVG 决策偏差走势图 -->
+            <div class="deviation-chart-wrapper">
+              <div class="chart-content" v-if="deviationPoints.length > 0">
+                <svg viewBox="0 0 320 180" class="deviation-svg">
+                  <defs>
+                    <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stop-color="rgba(139, 92, 246, 0.4)" />
+                      <stop offset="100%" stop-color="rgba(139, 92, 246, 0.0)" />
+                    </linearGradient>
+                  </defs>
+                  
+                  <!-- 网格背景线 -->
+                  <line x1="30" y1="20" x2="300" y2="20" stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" />
+                  <line x1="30" y1="55" x2="300" y2="55" stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" />
+                  <line x1="30" y1="90" x2="300" y2="90" stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" />
+                  <line x1="30" y1="125" x2="300" y2="125" stroke="rgba(255,255,255,0.05)" stroke-dasharray="2" />
+                  <line x1="30" y1="150" x2="300" y2="150" stroke="rgba(255,255,255,0.15)" />
+
+                  <!-- Y 轴坐标 -->
+                  <text x="22" y="24" fill="var(--color-text-muted)" font-size="8" text-anchor="end">最大</text>
+                  <text x="22" y="94" fill="var(--color-text-muted)" font-size="8" text-anchor="end">偏大</text>
+                  <text x="22" y="153" fill="var(--color-text-muted)" font-size="8" text-anchor="end">最佳</text>
+
+                  <!-- 渐变面积填充 -->
+                  <path :d="areaPath" fill="url(#chartGrad)" />
+
+                  <!-- 折线路径 -->
+                  <path :d="linePath" fill="none" stroke="var(--color-purple)" stroke-width="2" />
+
+                  <!-- 折线节点 -->
+                  <circle
+                    v-for="(pt, idx) in deviationPoints"
+                    :key="idx"
+                    :cx="pt.x"
+                    :cy="pt.y"
+                    :r="pt.val > 0 ? 4 : 2"
+                    :fill="pt.val >= 3 ? 'var(--color-primary)' : 'var(--color-purple)'"
+                    :stroke="pt.val >= 3 ? 'rgba(255, 94, 94, 0.4)' : 'none'"
+                    :stroke-width="pt.val >= 3 ? 4 : 0"
+                    class="chart-node"
+                    @mouseenter="hoverPoint = pt"
+                    @mouseleave="hoverPoint = null"
+                  />
+                </svg>
+
+                <!-- 出牌偏差 Hover 提示 -->
+                <div class="hover-tooltip" v-if="hoverPoint">
+                  <div class="tooltip-round">第 {{ hoverPoint.round }} 巡出牌：{{ hoverPoint.tileName }}</div>
+                  <div v-if="hoverPoint.val >= 3" class="err-text">❌ 流失 {{ hoverPoint.val }} 张进张 (建议打: {{ hoverPoint.recName }})</div>
+                  <div v-else-if="hoverPoint.val > 0" class="warn-text">⚠️ 流失 {{ hoverPoint.val }} 张进张 (建议打: {{ hoverPoint.recName }})</div>
+                  <div v-else class="ok-text">✅ 最佳决策</div>
+                </div>
+                <div class="chart-tip-default" v-else>
+                  💡 鼠标悬停在圆点上查看每巡决策偏差
+                </div>
+              </div>
+              <div v-else class="no-chart-placeholder">
+                暂无出牌决策记录 (本局可能没有进行任何出牌)
+              </div>
+            </div>
           </div>
-        </div>
+
+          <!-- 右侧：AI 报告正文 -->
+          <div class="ai-report-panel">
+            <div class="panel-section-title">🤖 AI 总教练诊断书</div>
+
+            <!-- 加载中 -->
+            <div v-if="loading" class="ai-loading-state">
+              <div class="skeleton-ring"></div>
+              <div class="loading-dots">
+                <span></span><span></span><span></span>
+              </div>
+              <p class="loading-text">总教练正在研判整局所有关键决策，生成诊断书中...</p>
+            </div>
+
+            <!-- 分析出错 -->
+            <div v-else-if="errorMsg" class="ai-error-state">
+              <span class="error-icon">⚠️</span>
+              <p class="error-msg-text">{{ errorMsg }}</p>
+              <button class="retry-btn" @click="runGodReview">重新分析</button>
+            </div>
+
+            <!-- 分析成功 -->
+            <div v-else class="ai-content-scroll">
+              <!-- AI 诊断详情 -->
+              <div class="ai-report-markdown" v-html="formattedReport"></div>
+            </div>
+          </div>
+        </template>
       </div>
 
       <!-- 底部操作 -->
@@ -163,6 +250,61 @@ const llm = useLLM()
 const loading = ref(false)
 const aiReport = ref('')
 const errorMsg = ref('')
+
+const activeTab = ref<'replay' | 'diagnose'>('replay')
+const hoverPoint = ref<any>(null)
+
+// 偏差数据提取（仅玩家出牌 discard 步骤，过滤掉对手 discard）
+const deviationData = computed(() => {
+  return props.history.filter(act => act.type === 'discard' && act.fromOpponent === undefined)
+})
+
+// SVG 折线图节点坐标映射
+const deviationPoints = computed(() => {
+  const data = deviationData.value
+  if (data.length === 0) return []
+  
+  const width = 270 // 可用宽度
+  const height = 130 // 可用高度 (最佳 Y=150, 最大偏差 Y=20)
+  
+  let maxDev = Math.max(...data.map(d => d.discardDeviation || 0))
+  if (maxDev < 5) maxDev = 5 // 最小最大值，防空或全为 0
+  
+  return data.map((d, index) => {
+    const x = 30 + (data.length > 1 ? (index / (data.length - 1)) * width : width / 2)
+    const val = d.discardDeviation || 0
+    const y = 150 - (val / maxDev) * height
+    
+    let tileName = ''
+    if (d.tile) {
+      tileName = formatTileName(d.tile)
+    }
+    
+    return {
+      x,
+      y,
+      val,
+      round: d.round,
+      tileName,
+      recName: d.recBestTileName || '无推荐'
+    }
+  })
+})
+
+const linePath = computed(() => {
+  const pts = deviationPoints.value
+  if (pts.length === 0) return ''
+  return pts.map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+})
+
+const areaPath = computed(() => {
+  const pts = deviationPoints.value
+  if (pts.length === 0) return ''
+  const start = `M ${pts[0].x} 150`
+  const lines = pts.map(p => `L ${p.x} ${p.y}`).join(' ')
+  const end = `L ${pts[pts.length - 1].x} 150 Z`
+  return `${start} ${lines} ${end}`
+})
 
 // 弹窗可见性绑定
 const showModal = computed({
@@ -289,6 +431,7 @@ function handleClose() {
 watch(() => props.visible, (visible) => {
   if (visible) {
     currentStep.value = 0
+    activeTab.value = 'replay'
     runGodReview()
   }
 }, { immediate: true })
@@ -364,6 +507,38 @@ watch(() => props.visible, (visible) => {
   color: var(--color-primary);
 }
 
+/* 标签页导航 */
+:global(.god-tabs) {
+  display: flex;
+  background: rgba(0, 0, 0, 0.25);
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 24px;
+  gap: 8px;
+}
+
+:global(.god-tabs .tab-item) {
+  padding: 12px 20px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+:global(.god-tabs .tab-item:hover) {
+  color: var(--color-text);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+:global(.god-tabs .tab-item.active) {
+  color: var(--color-purple);
+  border-bottom-color: var(--color-purple);
+  text-shadow: 0 0 10px rgba(139, 92, 246, 0.3);
+}
+
 /* 主体 layout */
 :global(.god-view-body) {
   flex: 1;
@@ -371,15 +546,118 @@ watch(() => props.visible, (visible) => {
   overflow: hidden;
 }
 
+:global(.god-view-body.replay) {
+  flex-direction: column;
+}
+
 /* 左侧：回放面板 */
 :global(.replay-panel) {
-  flex: 1.1;
-  border-right: 1px solid var(--color-border);
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
   background: rgba(0, 0, 0, 0.15);
+  box-sizing: border-box;
+}
+
+:global(.replay-panel.full-width) {
+  width: 100%;
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* 左侧数据诊断面板 */
+:global(.diagnose-data-panel) {
+  flex: 0.9;
+  border-right: 1px solid var(--color-border);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  background: rgba(0, 0, 0, 0.15);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* SVG 折线图图表样式 */
+:global(.deviation-chart-wrapper) {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+:global(.deviation-chart-wrapper .chart-content) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+}
+
+:global(.deviation-svg) {
+  width: 100%;
+  height: 150px;
+  overflow: visible;
+}
+
+:global(.chart-node) {
+  cursor: pointer;
+  transition: r 0.15s, fill 0.15s;
+}
+
+:global(.chart-node:hover) {
+  r: 6px;
+  fill: var(--color-accent) !important;
+}
+
+:global(.hover-tooltip) {
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: fadeIn 0.15s;
+}
+
+:global(.hover-tooltip .tooltip-round) {
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+:global(.hover-tooltip .err-text) {
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+:global(.hover-tooltip .warn-text) {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+:global(.hover-tooltip .ok-text) {
+  color: var(--color-success);
+  font-weight: 700;
+}
+
+:global(.chart-tip-default) {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+:global(.no-chart-placeholder) {
+  padding: 30px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 :global(.panel-section-title) {
